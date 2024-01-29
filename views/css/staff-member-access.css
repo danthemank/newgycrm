@@ -1,0 +1,29 @@
+
+/********************* STAFF STYLES */
+
+/* hide menu items and admin bar items */
+.wp-menu-separator, #toplevel_page_kinsta-tools, #menu-comments, #toplevel_page_elementor, #menu-posts-elementor_library, #menu-users, #menu-tools, #menu-settings > ul > li:not(:last-child), #wp-admin-bar-comments, #wp-admin-bar-new-elementor_library, #wp-admin-bar-kinsta-cache, .toplevel_page_wpml_plugin_log, .toplevel_page_wp_file_manager, .toplevel_page_cptui_main_menu, #toplevel_page_edit-post_type-acf-field-group, #menu-settings, .toplevel_page_eael-settings, #toplevel_page_astra, .toplevel_page_wpheka_plugin_panel, .toplevel_page_mailersend_config, #wp-admin-bar-imagify, #wp-admin-bar-tribe-events, #wp-admin-bar-updraft_admin_node {
+    display: none;
+  }
+  
+  /* hide dashboard widgets */
+  #dashboard_right_now, #dashboard_activity, #dashboard_quick_press, #dashboard_primary, #e-dashboard-overview, #woocommerce_dashboard_status, #rg_forms_dashboard, #tribe_dashboard_widget {
+      display: none !important;
+  }
+  
+  /* hide notices */
+  .smuac_dismiss_onboarding_notice, .e-notice--extended, .update-nag, #ast-minimum-addon-version-notice {
+      display: none !important;
+  }
+
+  .notice-warning {
+    display: none;
+}
+
+ul#adminmenu {
+    padding-top: 0 !important;
+}
+    
+#adminmenu li.wp-menu-separator {
+    display: none !important;
+}

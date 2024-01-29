@@ -1,0 +1,2 @@
+<div><input type="hidden" name="athletes[<?= $athlete_id ?>][lessons]" data-name="lessons" value="<?= $slot_id ?>"></div>
+<div><input type="hidden" name="athletes[<?= $athlete_id ?>][private_lessons]" data-name="private_lessons" value="<?= $class_id ?>"></div>
