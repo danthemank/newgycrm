@@ -258,9 +258,9 @@ class EmailTemplates
 
                                 default:
                                 
-                                    $template_message = $this->merge_tags($template_message, $user);
+                                    $message = $this->merge_tags($template_message, $user);
 
-                                    $is_sent = wp_mail($email, $subject, $template_message, $headers);
+                                    $is_sent = wp_mail($email, $subject, $message, $headers);
                                     if ($is_sent) {
                                         $current = get_current_user_id();
                                         $current_user = get_user_by('id', $current);
@@ -299,9 +299,9 @@ class EmailTemplates
                                                 break;
             
                                             default:
-                                                $template_message = $this->merge_tags($template_message, $user);
+                                                $message = $this->merge_tags($template_message, $user);
 
-                                                $is_sent = wp_mail($user->user_email, $subject, $template_message, $headers);
+                                                $is_sent = wp_mail($user->user_email, $subject, $message, $headers);
                                                 if ($is_sent) {
                                                     $current = get_current_user_id();
                                                     $current_user = get_user_by('id', $current);
@@ -336,9 +336,9 @@ class EmailTemplates
                                                 break;
             
                                             default:
-                                                $template_message = $this->merge_tags($template_message, $user);
+                                                $message = $this->merge_tags($template_message, $user);
 
-                                                $is_sent = wp_mail($user->user_email, $subject, $template_message, $headers);
+                                                $is_sent = wp_mail($user->user_email, $subject, $message, $headers);
                                                 if ($is_sent) {
                                                     $current = get_current_user_id();
                                                     $current_user = get_user_by('id', $current);
@@ -374,9 +374,9 @@ class EmailTemplates
                                 if (is_email($cleaned_email)) {
                                     $user = $wpdb->get_row($wpdb->prepare("SELECT * FROM $wpdb->users WHERE user_email = %s", $cleaned_email));
                                     
-                                    $template_message = $this->merge_tags($template_message, $user);
+                                    $message = $this->merge_tags($template_message, $user);
 
-                                    $is_sent = wp_mail($cleaned_email, $subject, $template_message, $headers);
+                                    $is_sent = wp_mail($cleaned_email, $subject, $message, $headers);
                                     if ($is_sent) {
                                         $current = get_current_user_id();
                                         $current_user = get_user_by('id', $current);
@@ -409,9 +409,9 @@ class EmailTemplates
                                                 break;
             
                                             default:
-                                            $template_message = $this->merge_tags($template_message, $user);
+                                            $message = $this->merge_tags($template_message, $user);
 
-                                            $is_sent = wp_mail($user->user_email, $subject, $template_message, $headers);
+                                            $is_sent = wp_mail($user->user_email, $subject, $message, $headers);
                                             if ($is_sent) {
                                                 $current = get_current_user_id();
                                                 $current_user = get_user_by('id', $current);
@@ -435,7 +435,6 @@ class EmailTemplates
                             if (isset($_POST['programs_classes']) && $_POST['programs_classes'] == 'all_programs') {
 
                                 $enrolled_users = $this->get_enrolled_users_only();
-
                                 $this->sendEmailByBatches($enrolled_users, 'customer', $subject, $template_message, $headers);
 
                             }
@@ -449,15 +448,15 @@ class EmailTemplates
                                         $this->get_subscription_invoice($user->user_email, $template_message, $subject, $headers);
                                         break;
                                     default:
-                                    $template_message = $this->merge_tags($template_message, $user);
+                                    $message = $this->merge_tags($template_message, $user);
 
-                                    $is_sent = wp_mail($user->user_email, $subject, $template_message, $headers);
+                                    $is_sent = wp_mail($user->user_email, $subject, $message, $headers);
                                     if ($is_sent) {
                                         $current = get_current_user_id();
                                         $current_user = get_user_by('id', $current);
                                         $comment_user = array(
                                             'comment_author' => $current_user->display_name,
-                                            'comment_content' => 'Email "'.$subject.'" sent to '. $uuser->user_email .'. ',
+                                            'comment_content' => 'Email "'.$subject.'" sent to '. $user->user_email .'. ',
                                             'user_id' => $user->ID,
                                             'comment_meta'         => array(
                                                 'is_customer_note'       => sanitize_text_field(1),
@@ -543,9 +542,8 @@ class EmailTemplates
                             break;
     
                         default:
-                            $template_message = $this->merge_tags($template_message, $recipient);
-
-                            wp_mail($recipient->user_email, $subject, $template_message, $headers);
+                            $message = $this->merge_tags($template_message, $recipient);
+                            wp_mail($recipient->user_email, $subject, $message, $headers);
                         break;
                         }
                     } 
@@ -554,7 +552,6 @@ class EmailTemplates
                 sleep(10);
             }
         }
-
     }
 
     public static function get_subscription_invoice($email, $template_message, $subject, $headers, $args = null) {

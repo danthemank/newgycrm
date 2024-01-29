@@ -10,11 +10,13 @@ jQuery(document).ready(function($){
 
     let classId = $(this).data('class')
 		let slotId = $(this).data('slot')
+		let containerId = $(this).data('id')
 
-    if (classId && slotId) {
+    if (classId && slotId && containerId) {
       if ($(this).data('type') !== 'no-auto') {
         $('#confirm_delete_class #delete_class_id').val(classId)
         $('#confirm_delete_class #delete_slot_id').val(slotId)
+        $('#confirm_delete_class #container_id').val(containerId)
       }
     }
 

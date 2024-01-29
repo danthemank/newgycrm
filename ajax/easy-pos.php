@@ -106,8 +106,6 @@ function pos_ajax_response() {
 
                 // When the customer dropdown changes, fetch and populate the orders dropdown
                 $('#customer').on('change', function (e) {
-console.log('object');
-console.log(e.target);
                     $('.easy-pos #card_exists').prop('checked', false)
                     $('.easy-pos .card_exists').hide()
                     $('.easy-pos .add_card').show()
@@ -282,7 +280,6 @@ console.log(e.target);
                     $('#submit_payment').toggleClass('disabled')
                     let response = await $.ajax({
                         url: '<?php echo admin_url("admin-ajax.php"); ?>',
-                            type: 'POST',
                             data: {
                                 action: 'get_amount',
                                 order_id: orderId,
@@ -387,7 +384,802 @@ add_action('wp_ajax_get_class_fee', 'get_class_fee');
 add_action('wp_ajax_get_ach_payment_methods', 'get_ach_payment_methods');
 add_action('wp_ajax_remove_ach_payment_method', 'remove_ach_payment_method');
 add_action('wp_ajax_pos_get_product_details', 'pos_get_product_details');
+add_action('wp_ajax_gy_create_payment', 'gy_create_payment');
 
+function gy_create_payment() {
+    if (isset($_GET['fields'])) {
+        $fields = json_decode(stripslashes($_GET['fields']), true);
+        $nonce = $fields['pos_nonce'];
+
+        if (wp_verify_nonce($nonce, 'pos_nonce')) {
+
+            if (empty($fields['customer']) || $fields['customer'] == 'no_account') {
+                $is_invalid[] = 'customer';
+            }
+            if (empty($fields['amount']) || $fields['amount'] <= 0) {
+                $is_invalid[] = 'amount';
+            }
+            if ($fields['payment_method'] == 'check' && empty($fields['check_number'])) {
+                $is_invalid[] = 'check_number';
+            }
+            if ($fields['payment_method'] == 'cash' && empty($fields['cash_receipt'])) {
+                $is_invalid[] = 'cash_receipt';
+            }
+            if (!empty($fields['is_discount']) && (empty($fields['percentage']['discount']) || $fields['percentage']['discount'] <= 0)) {
+                $is_invalid[] = 'is_discount';
+            }
+            if (!empty($fields['is_fee']) && (empty($fields['percentage']['fee']) || $fields['percentage']['fee'] <= 0)) {
+                $is_invalid[] = 'is_fee';
+            }
+
+            if (!isset($is_invalid)) {
+                $customer_id = $fields['customer'];
+                $amount = $fields['amount'];
+
+                $is_discount = $fields['is_discount'];
+                $is_fee = $fields['is_fee'];
+
+                $discount_percentage = intval($fields['percentage']['discount']) / 100;
+                $fee_percentage = $fields['percentage']['fee'];
+
+                $balance = get_invoice_balance($customer_id);
+                $order_id = isset($fields['order']) ? $fields['order'] : '';
+
+                $payment_method = $fields['payment_method'];
+
+                $email_subject = $fields['email_subject'];
+                $email_content = $fields['email_content'];
+                
+                $card_exists = $fields['card_exists'];
+                $check_number = $fields['check_number'];
+                $cash_receipt = $fields['cash_receipt'];
+                $stripe_token = $fields['stripeToken'];
+                $card_id = $fields['card_id'];
+                
+                $setup_id = $fields['setup_id'];
+                $setup_pm = $fields['setup_pm'];
+                $ach_exists = $fields['ach_exists'];
+                $ach_id = $fields['ach_id'];
+                
+                $staff_note = $fields['staff_note'];
+
+                if (!empty($order_id)) {
+                    $order = wc_get_order($order_id);
+                }
+                
+                if ($amount <= 0 && $payment_method !== 'adjustment') {
+                    $invalid_fields[] = 'Please enter an amount greater than 0';
+                }
+
+                $original_amount = $amount;
+
+                if ($is_discount == 1){
+                    $discount_given = $original_amount * ($discount_percentage);
+                    $amount_discount = $original_amount - $discount_given;
+                    $amount = $amount_discount;
+
+                    if (isset($order)) {
+                        $total = $order->get_total();
+                    } else {
+                        $total = $balance['amount'];
+                    }
+
+                    if ($original_amount > $total) {
+                        $amount = $original_amount;
+                    }
+                }
+
+                if ($is_fee == 1 && $payment_method == 'card' || $payment_method == 'ach'){
+                    $fee_given = $original_amount * floatval($fee_percentage) / 100;
+                    $amount = $original_amount + $fee_given;
+
+                    $amounts = array('original_amount' => $original_amount, 'amount' => $amount);
+                    $amount = $amounts;
+                }
+
+                if ($is_discount == 1 && $is_fee == 1) {
+                    $amount = $original_amount + $fee_given - $discount_given;
+                    $amounts = array('original_amount' => $amount_discount, 'amount' => $amount);
+                    $amount = $amounts;
+                }
+
+                if (!isset($invalid_fields)) {
+
+                    switch ($payment_method) {
+                        case 'card':
+                            $invalid_fields = card_method($customer_id, $card_id, $stripe_token, $order, $amount, $card_exists, $staff_note, array('is_discount' => $discount_percentage, 'is_fee' => $fee_percentage));
+                        break;
+                        
+                        case 'check': 
+                            $invalid_fields = check_method($customer_id, $amount, $check_number, $order, $staff_note);
+                        break;
+                        
+                        case 'cash': 
+                            $invalid_fields = cash_method($customer_id, $amount, $order, $cash_receipt, $staff_note, array('is_discount' => $discount_percentage, 'is_fee' => $fee_percentage));
+                        break;
+
+                        case 'credit': 
+                            $order_id = pos_create_order($customer_id, $amount, null, array('credit' => 1), $staff_note);
+                            $invalid_fields['id'] = $order_id;
+                        break;
+
+                        case 'adjustment': 
+                            $invalid_fields = adjustment_method($customer_id, $amount, $staff_note);
+                        break;
+
+                        case 'ach': 
+                            $invalid_fields = ach_method($customer_id, $ach_id, $setup_id, $setup_pm, $order, $amount, $ach_exists, $staff_note, array('is_discount' => $discount_percentage, 'is_fee' => $fee_percentage));
+                        break;
+                    }
+
+                    if (isset($invalid_fields)) {
+
+                        if (isset($invalid_fields['id'])) {
+                            if ($is_discount == 1 && $payment_method !== 'adjustment' && $payment_method !== 'credit' && $payment_method !== 'check') {
+                                pos_create_order($customer_id, $discount_given, null, array('discount' => 1, 'percentage' => $discount_percentage, 'payment_method' => $payment_method, 'parent_id' => $invalid_fields['id']), $staff_note);
+                            }
+
+                            if (!empty($email_subject) && !empty($email_content)) {
+                                $admin = wp_get_current_user();
+                                $customer = get_user_by('id', $customer_id);
+
+                                $from = !empty(get_option('custom_note_from')) ? get_option('custom_note_from') : 'ca@gymnasticsofyork.com';
+                                $replyto = !empty(get_option('custom_note_replyto')) ? get_option('custom_note_replyto') : 'ca@gymnasticsofyork.com';
+                                $bcc  = !empty(get_option('custom_note_bcc')) ? get_option('custom_note_bcc') : 'ca@gymnasticsofyork.com';
+
+                                $headers[] = 'Content-Type: text/html; charset=UTF-8';
+                                $headers[] = 'From: <'.$from.'>';
+                                $headers[] = 'Reply-To: <'.$replyto.'>';
+                                $headers[] = 'Bcc: '.$bcc;
+                                
+                                $email_content = wp_kses_post($email_content);
+                                $email_content = nl2br($email_content);
+                                
+                                $message = EmailTemplates::self_merge_tags($email_content, $customer);
+                                $is_sent = wp_mail($customer->user_email, $email_subject, $message, $headers);
+
+                                if ($is_sent) {
+                                    $comment_user = array(
+                                        'comment_author' => $admin->display_name,
+                                        'comment_content' => 'Email "'.$email_subject.'" sent to '.$customer->user_email.'. ',
+                                        'user_id' => $customer->ID,
+                                        'comment_meta'         => array(
+                                            'is_customer_note'       => sanitize_text_field(1),
+                                            )
+                                        );
+                        
+                                    wp_insert_comment($comment_user);
+                                }
+                            }
+
+                            $response = array('success' => 1);
+
+                        } else {
+                            $response = array('is_invalid' => $invalid_fields[0]);
+                        }
+                    }
+                } else {
+                    $response = array('is_invalid' => $invalid_fields[0]);
+                }
+            
+            } else {
+                $response = array('required' => $is_invalid);
+            }
+        } else {
+            $response = array('is_invalid' => 'Unknown Error. Please try again later.');
+        }
+    }
+
+    echo json_encode($response);
+    die();
+}
+function pos_update_order($order, $amount, $method, $staff_note) {
+    global $wpdb;
+
+    $sql = 'SELECT post_type FROM '.$wpdb->posts.' WHERE ID = %d';
+    $where = [$order->get_id()];
+    $result = $wpdb->get_results($wpdb->prepare($sql, $where));
+
+    $admin_id = get_current_user_id();
+    $admin = get_user_by('id', $admin_id);
+
+    $note = 'Payment recorded through GYCRM by user '.$admin->display_name;
+
+    switch($method) {
+        case 'card':
+            $note = 'Credit Card (Stripe) '.$note;
+        break;
+        case 'check':
+            $note = 'Check '.$note;
+        break;
+        case 'cash':
+            $note = 'Cash '.$note;
+        break;
+    }
+
+    if ($result[0]->post_type == 'shop_subscription') {
+        $parent_id = $order->get_parent_id();
+        
+        $parent_order = wc_get_order($parent_id);
+        
+        $parent_order->update_status('on-hold');
+        $order->update_status('on-hold', $note);
+    } else {
+        $order->update_status('on-hold', $note);
+    }
+
+    $is_payment_plan = get_post_meta($order->get_id(), 'is_payment_plan', true);
+
+    if ($is_payment_plan == 1) {
+        update_post_meta($order->get_id(), 'is_paid', 1);
+    }
+
+    if (!empty($staff_note)) {
+        $order->add_order_note($staff_note);
+    }
+
+    $order->add_order_note($note);
+
+    return $order->get_id();
+}
+
+function ach_method($customer_id, $ach_id, $setup_id, $setup_pm, $order, $amount, $ach_exists, $staff_note, $metadata) {
+    $is_invalid = [];
+    $stripe = new \Stripe\StripeClient(STRIPE_TEST_KEY);
+    
+    $user = get_user_by('id', $customer_id);
+    $stripe_cus_id = get_user_meta($customer_id, 'wp__stripe_customer_id', true);
+    
+    if (isset($amount['amount'])) {
+        $amounts = $amount;
+        $amount = $amounts['amount'];
+    }
+    
+    $amount_in_cents = intval($amount * 100);
+
+    if (!empty($setup_id) && !empty($setup_pm) && $ach_exists !== 'ach_exists') {
+
+        try {
+            $setup_intent = $stripe->setupIntents->confirm(
+                $setup_id,
+                ['payment_method' => $setup_pm, 'mandate_data' => ['customer_acceptance' => ['type' => 'online', 'online' => ['ip_address' => '35.245.151.137', 'user_agent' => 'device']]]]
+            );
+
+            if ($setup_intent->status == 'requires_action') {
+                try {
+                    $setup_intent = $stripe->setupIntents->verifyMicrodeposits(
+                        $setup_id,
+                        ['amounts' => [32, 45]]
+                    );
+                } catch (\Stripe\Exception\RateLimitException $e) {
+                    $is_invalid[] = 'Our server is currently experiencing high traffic. Please try again later.';
+                } catch (\Stripe\Exception\InvalidRequestException $e) {
+                    $is_invalid[] = 'We are sorry, we cannot process your request. Please try again later.';
+                } catch (\Stripe\Exception\AuthenticationException $e) {
+                    $is_invalid[] = 'We are sorry, we cannot authenticate your request. Please try again later.';
+                } catch (\Stripe\Exception\ApiConnectionException $e) {
+                    $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+                } catch (\Stripe\Exception\ApiErrorException $e) {
+                    $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+                } catch (Exception $e) {
+                    $is_invalid[] = 'Unknown Error. Please try again later.';
+                }
+            }
+
+            if ($setup_intent->status == 'succeeded' || $setup_intent->status == 'processing') {
+                $payment_method = $setup_pm;
+            } else {
+                return $is_invalid;
+            }
+
+        } catch (\Stripe\Exception\RateLimitException $e) {
+            $is_invalid[] = 'Our server is currently experiencing high traffic. Please try again later.';
+        } catch (\Stripe\Exception\InvalidRequestException $e) {
+            $is_invalid[] = 'We are sorry, we cannot process your request. Please try again later.';
+        } catch (\Stripe\Exception\AuthenticationException $e) {
+            $is_invalid[] = 'We are sorry, we cannot authenticate your request. Please try again later.';
+        } catch (\Stripe\Exception\ApiConnectionException $e) {
+            $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+        } catch (Exception $e) {
+            $is_invalid[] = 'Unknown Error. Please try again later.';
+        }
+        
+        if (!empty($is_invalid)) {
+            return $is_invalid;
+        }
+    } if ($ach_exists == 'ach_exists') {
+        if (!empty($ach_id)) {
+            $payment_method = $stripe->paymentMethods->retrieve(
+                $ach_id
+            );
+
+            if (isset($payment_method)) {
+                $payment_method = $payment_method->id;
+            }
+        }
+    }   
+
+    if (empty($is_invalid) && !empty($amount) && isset($payment_method)) {
+
+        if (isset($amounts)) {
+            $amount = $amounts['original_amount'];
+        }
+
+        if(!empty($order)) {
+            $parent_order_id = pos_update_order($order, $amount, 'card', $staff_note);
+        }
+
+        $order_id = pos_create_order($customer_id, $amount, $order, array('stripe_cus_id' => $stripe_cus_id, 'payment_method' => $payment_method, 'ach' => 1, 'is_discount' => $metadata['is_discount'], 'is_fee' => $metadata['is_fee']), $staff_note);
+            
+        $metadata = ['order_id' => $order_id, 'customer_email' => $user->user_email, 'customer_name' => $user->first_name . ' ' . $user->last_name, 'save_payment_method' => 'true', 'site_url' => site_url()];
+
+        try {
+            $payment_intent = $stripe->paymentIntents->create([
+                'amount' => $amount_in_cents,
+                'currency' => 'usd',
+                'customer' => $stripe_cus_id,
+                'metadata' => $metadata,
+                'payment_method' => $payment_method,
+                'payment_method_types' => ['us_bank_account'],
+                'description' => 'Gymnastics of York - Order #'. $order_id,
+                'confirmation_method' => 'manual',
+                'confirm' => true,
+                'mandate_data' => ['customer_acceptance' => ['type' => 'online', 'online' => ['ip_address' => '35.245.151.137', 'user_agent' => 'device']]]
+            ]);
+        } catch (\Stripe\Exception\RateLimitException $e) {
+            $is_invalid[] = 'Our server is currently experiencing high traffic. Please try again later.';
+        } catch (\Stripe\Exception\InvalidRequestException $e) {
+            $is_invalid[] = 'We are sorry, we cannot process your request. Please try again later.';
+        } catch (\Stripe\Exception\AuthenticationException $e) {
+            $is_invalid[] = 'We are sorry, we cannot authenticate your request. Please try again later.';
+        } catch (\Stripe\Exception\ApiConnectionException $e) {
+            $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+        } catch (Exception $e) {
+            $is_invalid[] = 'Unknown Error. Please try again later.';
+        }
+
+        sleep(15);
+
+        $payment_intent = $stripe->paymentIntents->retrieve($payment_intent->id, []);
+
+        if ($payment_intent->last_payment_error) {
+            $is_invalid[] = $payment_intent->last_payment_error->message;
+        }
+
+        if (empty($is_invalid) && $payment_intent->status == 'succeeded' || $payment_intent->status == 'processing') {
+            update_post_meta($order_id, '_stripe_intent_id', $payment_intent->id);
+            return array('id' => $order_id);
+        } else {
+            if (isset($is_invalid[0])){
+                $note = $is_invalid[0];
+            } else {
+                $note = 'ACH Payment failed';
+            }
+            $new_order = wc_get_order($order_id);
+            $new_order->update_status('cancelled', $note);
+
+            if (isset($parent_order_id)) {
+                $parent_order = wc_get_order($parent_order_id);
+                $parent_order->update_status('on-hold', $note);
+            }
+
+            return $is_invalid;
+        }
+    } else {
+        return $is_invalid;
+    }
+}
+
+
+function adjustment_method($customer_id, $amount, $staff_note) {
+        
+    if ($amount < 0) {
+        $order_id = pos_create_order($customer_id, abs($amount), null, array('adjustment' => 'debit'), $staff_note);
+        
+        $comment_invoice = array(
+            'comment_author' => $order_id,
+            'comment_content' => 'Adjustment for $'.abs($amount),
+            'user_id' => $customer_id,
+            'comment_meta'         => array(
+                'is_customer_note'       => sanitize_text_field(1),
+                'is_adjustment'       => sanitize_text_field(1),
+                'adjustment_total'    => abs($amount)
+                )
+            );
+
+            wp_insert_comment($comment_invoice);
+    } else {
+        $order_id = pos_create_order($customer_id, $amount, null, array('adjustment' => 'credit'), $staff_note);
+    }
+
+    return array('id' => $order_id);
+}
+
+function pos_create_order($customer_id, $amount, $parent_order, $metadata, $staff_note) {
+    global $wpdb;
+
+    $user = get_user_by('id', $customer_id);
+    $admin_id = get_current_user_id();
+    $admin = get_user_by('id', $admin_id);
+
+    $order = wc_create_order( array( 'customer_id' => $user->ID) );
+
+    $fname     = !empty(get_user_meta($user->ID, 'billing_first_name', true)) ? get_user_meta($user->ID, 'billing_first_name', true) : '';
+    $lname     = !empty(get_user_meta($user->ID, 'billing_last_name', true)) ? get_user_meta($user->ID, 'billing_last_name', true) : '';
+    $email     = $user->user_email;
+    $address_1 = !empty(get_user_meta( $user->ID, 'billing_address_1', true )) ? get_user_meta( $user->ID, 'billing_address_1', true ) : '';
+    $city      = !empty(get_user_meta( $user->ID, 'billing_city', true )) ? get_user_meta( $user->ID, 'billing_city', true ) : '';
+    $postcode  = !empty(get_user_meta( $user->ID, 'billing_postcode', true )) ? get_user_meta( $user->ID, 'billing_postcode', true ) : '';
+    $state     = !empty(get_user_meta( $user->ID, 'billing_state', true )) ? get_user_meta( $user->ID, 'billing_state', true ) : '';
+
+    $address         = array(
+        'first_name' => $fname,
+        'last_name'  => $lname,
+        'email'      => $email,
+        'address_1'  => $address_1,
+        'city'       => $city,
+        'state'      => $state,
+        'postcode'   => $postcode,
+        'country'    => 'United States',
+    );
+
+    $order->set_address( $address, 'billing' );
+    $order->set_address( $address, 'shipping' );
+
+
+    $sql = 'SELECT ID FROM wp_posts WHERE post_title = %s AND post_type = "product"';
+    $where = ['Staff Payment'];
+    $product_id = $wpdb->get_results($wpdb->prepare($sql, $where));
+    if ($product_id) {
+        $product = wc_get_product( $product_id[0]->ID );
+        $order->add_product( $product, 1 );
+    }
+
+    $note = 'Payment recorded through GYCRM by user '.$admin->display_name;
+    
+    if (isset($parent_order)) {
+        $note .= ' for Order #'.$parent_order->get_id();
+        update_post_meta($order->get_id(), '_invoice_id', $parent_order->get_id());
+    }
+    
+    if (isset($metadata['card'])) {
+        $note = 'Credit Card (Stripe) '.$note;
+        $item_name = 'Credit Card (Stripe)';
+
+        update_post_meta($order->get_id(), '_stripe_customer_id', $metadata['stripe_cus_id']);
+        update_post_meta($order->get_id(), '_stripe_source_id', $metadata['payment_method']);
+        update_post_meta($order->get_id(), '_payment_method', 'stripe');
+    }
+
+    if (isset($metadata['check_number'])) {
+        $note = 'Check '.$note;
+        $item_name = 'Check No '.$metadata['check_number'];
+
+        update_post_meta($order->get_id(), '_payment_receipt', $metadata['check_number']);            
+        update_post_meta($order->get_id(), '_payment_method', 'cheque');
+    }
+    
+    if (isset($metadata['cash'])) {
+        $note = 'Cash '.$note;
+        $item_name = 'Cash Receipt No #'.$metadata['cash'];
+
+        update_post_meta($order->get_id(), '_payment_receipt', $metadata['cash']);            
+        update_post_meta($order->get_id(), '_payment_method', 'cash');
+    }
+    
+    if (isset($metadata['credit'])) {
+        $note = 'Credit added through GYCRM by user '.$admin->display_name;
+        $item_name = 'Account Credit';
+    }
+
+    if (isset($metadata['discount'])) {
+        $note = 'Discount of '.$metadata['percentage'].'% added to Order No '.$order->get_id() - 1 .' through GYCRM by user '.$admin->display_name;
+        $item_name = ucwords($metadata['payment_method']).' Credit';
+    }
+
+    if (isset($metadata['fee'])) {
+        $note = 'Fee of '.$metadata['percentage'].'% added to Order No '.$order->get_id() - 1 .' through GYCRM by user '.$admin->display_name;
+        $item_name = ucwords($metadata['payment_method']).' Fee';
+    }
+
+    if (isset($metadata['adjustment'])) {
+        $note = 'Adjustment added through GYCRM by user '.$admin->display_name;
+        $item_name = 'Entry Adjustment';
+    }
+
+    if (isset($metadata['ach'])) {
+        $note = 'ACH (Stripe) '.$note;
+        $item_name = 'ACH (Stripe)';
+
+        update_post_meta($order->get_id(), '_stripe_customer_id', $metadata['stripe_cus_id']);
+        update_post_meta($order->get_id(), '_stripe_source_id', $metadata['payment_method']);
+        update_post_meta($order->get_id(), '_payment_method', 'stripe_ach');
+    }
+
+    if (isset($metadata['is_discount']) && !empty($metadata['is_discount'])) {
+        $discount_note = 'Added Discount of %'.$metadata['is_discount'];
+        $order->add_order_note($discount_note);
+        update_post_meta($order->get_id(), '_discount_percentage', $metadata['is_discount']);
+    }
+    
+    if (isset($metadata['is_fee']) && !empty($metadata['is_fee'])) {
+        $fee_note = 'Added Fee of %'.$metadata['is_fee'];
+        $order->add_order_note($fee_note);
+        update_post_meta($order->get_id(), '_fee_percentage', $metadata['is_fee']);
+    }
+    
+    foreach( $order->get_items() as $item_id => $item ){
+        $item->set_name( $item_name );
+        $item->set_subtotal($amount); 
+        $item->set_total( $amount);
+        $item->calculate_taxes();
+        $item->save();
+    }
+
+    $order->calculate_totals();
+    
+    if (isset($metadata['adjustment']) && $metadata['adjustment'] == 'debit') {
+        $order->update_status( 'pending', $note);
+    } else {
+        $order->update_status( 'processing', $note);
+    }
+
+    if (isset($metadata['parent_id'])) {
+        update_post_meta($order->get_id(), '_parent_id', $metadata['parent_id']);
+    }
+    
+    update_post_meta($order->get_id(), '_user_id', $admin_id);
+
+    if (!empty($staff_note)) {
+        $order->add_order_note($staff_note);
+    }
+    
+    return $order->get_id();
+}
+
+function cash_method($customer_id, $amount, $order, $cash_receipt, $staff_note, $metadata) {
+
+    $invalid_fields = [];
+
+    if (!empty($cash_receipt)) {
+        if(!empty($order)) {
+            pos_update_order($order, $amount, 'cash', $staff_note);
+        }
+        $order_id = pos_create_order($customer_id, $amount, $order, array('cash' => $cash_receipt, 'is_discount' => $metadata['is_discount'], 'is_fee' => $metadata['is_fee']), $staff_note);
+        return array('id' => $order_id);
+    } else {
+        $invalid_fields[] = 'Please enter a cash receipt';
+        return $invalid_fields;
+    }
+    
+
+}
+
+function check_method($customer_id, $amount, $check_number, $order, $staff_note) {
+    $is_invalid = [];
+    
+    if (!empty($check_number)) {
+        if(!empty($order)) {
+            pos_update_order($order, $amount, 'check', $staff_note);
+        }
+        $order_id = pos_create_order($customer_id, $amount, $order, array('check_number' => $check_number), $staff_note);
+        return array('id' => $order_id);
+    } else {
+        $is_invalid[] = 'Please enter a check number.';
+        return $is_invalid;
+    }
+
+}
+
+function card_method($customer_id, $card_id, $stripe_token, $order, $amount, $card_exists, $staff_note, $metadata) {
+    if (isset($amount['amount'])) {
+        $amounts = $amount;
+        $amount = $amounts['amount'];
+    }
+    $stripe = new \Stripe\StripeClient(STRIPE_TEST_KEY);
+
+    $is_invalid = [];
+
+    $amount_in_cents = intval($amount * 100);
+    
+    if ($card_exists == 'add_card') {
+        if (empty($stripe_token)
+        ) {
+            $is_invalid[] = 'Please enter your credit card details.';
+        }
+        
+    } else if ($card_exists == 'card_exists') {
+        if (!empty($card_id)) {
+            $payment_method = $stripe->paymentMethods->retrieve(
+                $card_id
+            );
+
+            if (isset($payment_method)) {
+                $payment_method = $payment_method->id;
+            }
+        }
+    }
+
+    if (empty($is_invalid) && !empty($amount) ) {
+
+        $user = get_user_by('id', $customer_id);
+        $stripe_cus_id = get_user_meta($customer_id, 'wp__stripe_customer_id', true);
+        if (empty($stripe_cus_id)) {
+
+            try {
+                $customer = $stripe->customers->create([
+                    'email' => $user->user_email,
+                    'source' => $stripe_token
+                ]);
+                $payment_method = $customer->default_source;
+            } catch(\Stripe\Exception\CardException $e) {
+
+                if ($e->getError()->code == 'expired_card') {
+                    $is_invalid[] = 'The card has expired. Check the expiration date or use a different card.';
+                } elseif ($e->getError()->code == 'card_declined') {
+                    $is_invalid[] = 'Your card has been declined by issuer.';
+                } elseif ($e->getError()->code == 'incorrect_zip') {
+                    $is_invalid[] = 'The card’s postal code is incorrect. Check the card’s postal code or use a different card.';
+                } elseif ($e->getError()->code == 'incorrect_number') {
+                    $is_invalid[] = 'The card number is incorrect. Check the card’s number or use a different card.';
+                } elseif ($e->getError()->code == 'invalid_expiry_month') {
+                    $is_invalid[] = 'The card’s expiration month is incorrect. Check the expiration date or use a different card.';
+                } elseif ($e->getError()->code == 'invalid_expiry_year') {
+                    $is_invalid[] = 'The card’s expiration year is incorrect. Check the expiration date or use a different card.';
+                } elseif ($e->getError()->code == 'incorrect_cvc') {
+                    $is_invalid[] = 'The card’s security code is incorrect. Check the card’s security code or use a different card.';
+                } else {
+                    $is_invalid[] = 'Unknown Error with your credit card. Please try again later.';
+                }
+
+            } catch (\Stripe\Exception\RateLimitException $e) {
+                $is_invalid[] = 'Our server is currently experiencing high traffic. Please try again later.';
+            } catch (\Stripe\Exception\InvalidRequestException $e) {
+                $is_invalid[] = 'We are sorry, we cannot process your request. Please try again later.';
+            } catch (\Stripe\Exception\AuthenticationException $e) {
+                $is_invalid[] = 'We are sorry, we cannot authenticate your request. Please try again later.';
+            } catch (\Stripe\Exception\ApiConnectionException $e) {
+                $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+            } catch (\Stripe\Exception\ApiErrorException $e) {
+                $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+            } catch (Exception $e) {
+                $is_invalid[] = 'Unknown Error. Please try again later.';
+            }
+            
+            if (!empty($is_invalid)) {
+                return $is_invalid;
+            } else {
+                $stripe_cus_id = $customer->id;
+                update_user_meta($customer_id, 'wp__stripe_customer_id', $stripe_cus_id);
+            }
+        } elseif (!empty($stripe_cus_id) && !empty($stripe_token)) {
+            try {
+                $payment_method = $stripe->customers->createSource($stripe_cus_id, ['source' => $stripe_token]);
+                $payment_method = $payment_method->id;
+            } catch(\Stripe\Exception\CardException $e) {
+                if ($e->getError()->code == 'expired_card') {
+                    $is_invalid[] = 'The card has expired. Check the expiration date or use a different card.';
+                } elseif ($e->getError()->code == 'card_declined') {
+                    $is_invalid[] = 'Your card has been declined by issuer.';
+                } elseif ($e->getError()->code == 'incorrect_zip') {
+                    $is_invalid[] = 'The card’s postal code is incorrect. Check the card’s postal code or use a different card.';
+                } elseif ($e->getError()->code == 'incorrect_number') {
+                    $is_invalid[] = 'The card number is incorrect. Check the card’s number or use a different card.';
+                } elseif ($e->getError()->code == 'invalid_expiry_month') {
+                    $is_invalid[] = 'The card’s expiration month is incorrect. Check the expiration date or use a different card.';
+                } elseif ($e->getError()->code == 'invalid_expiry_year') {
+                    $is_invalid[] = 'The card’s expiration year is incorrect. Check the expiration date or use a different card.';
+                } elseif ($e->getError()->code == 'incorrect_cvc') {
+                    $is_invalid[] = 'The card’s security code is incorrect. Check the card’s security code or use a different card.';
+                } else {
+                    $is_invalid[] = 'Unknown Error with your credit card. Please try again later.';
+                }
+            } catch (\Stripe\Exception\RateLimitException $e) {
+                $is_invalid[] = 'Our server is currently experiencing high traffic. Please try again later.';
+            } catch (\Stripe\Exception\InvalidRequestException $e) {
+                $is_invalid[] = 'We are sorry, we cannot process your request. Please try again later.';
+            } catch (\Stripe\Exception\AuthenticationException $e) {
+                $is_invalid[] = 'We are sorry, we cannot authenticate your request. Please try again later.';
+            } catch (\Stripe\Exception\ApiConnectionException $e) {
+                $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+            } catch (\Stripe\Exception\ApiErrorException $e) {
+                $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+            } catch (Exception $e) {
+                $is_invalid[] = 'Unknown Error. Please try again later.';
+            }
+
+            if (!empty($is_invalid)) {
+                return $is_invalid;
+            }
+        }
+
+        if (isset($amounts)) {
+            $amount = $amounts['original_amount'];
+        }
+
+        if(!empty($order)) {
+            $parent_order_id = pos_update_order($order, $amount, 'card', $staff_note);
+        }
+
+        $order_id = pos_create_order($customer_id, $amount, $order, array('stripe_cus_id' => $stripe_cus_id, 'payment_method' => $payment_method, 'card' => 1, 'is_discount' => $metadata['is_discount'], 'is_fee' => $metadata['is_fee']), $staff_note);
+        
+        $metadata = ['order_id' => $order_id, 'customer_email' => $user->user_email, 'customer_name' => $user->first_name . ' ' . $user->last_name, 'save_payment_method' => 'true', 'site_url' => site_url()];
+
+        try {
+            $payment_intent = $stripe->paymentIntents->create([
+                'amount' => $amount_in_cents,
+                'currency' => 'usd',
+                'customer' => $stripe_cus_id,
+                'metadata' => $metadata,
+                'payment_method' => $payment_method,
+                'description' => 'Gymnastics of York - Order #'. $order_id,
+                'confirmation_method' => 'manual',
+                'confirm' => true,
+            ]);
+        } catch(\Stripe\Exception\CardException $e) {
+
+            if ($e->getError()->code == 'expired_card') {
+                $is_invalid[] = 'The card has expired. Check the expiration date or use a different card.';
+            } elseif ($e->getError()->code == 'card_declined') {
+                $is_invalid[] = 'Your card has been declined by issuer.';
+            } elseif ($e->getError()->code == 'incorrect_zip') {
+                $is_invalid[] = 'The card’s postal code is incorrect. Check the card’s postal code or use a different card.';
+            } elseif ($e->getError()->code == 'incorrect_number') {
+                $is_invalid[] = 'The card number is incorrect. Check the card’s number or use a different card.';
+            } elseif ($e->getError()->code == 'invalid_expiry_month') {
+                $is_invalid[] = 'The card’s expiration month is incorrect. Check the expiration date or use a different card.';
+            } elseif ($e->getError()->code == 'invalid_expiry_year') {
+                $is_invalid[] = 'The card’s expiration year is incorrect. Check the expiration date or use a different card.';
+            } elseif ($e->getError()->code == 'incorrect_cvc') {
+                $is_invalid[] = 'The card’s security code is incorrect. Check the card’s security code or use a different card.';
+            } else {
+                $is_invalid[] = 'Unknown Error with your credit card. Please try again later.';
+            }
+
+        } catch (\Stripe\Exception\RateLimitException $e) {
+            $is_invalid[] = 'Our server is currently experiencing high traffic. Please try again later.';
+        } catch (\Stripe\Exception\InvalidRequestException $e) {
+            $is_invalid[] = 'We are sorry, we cannot process your request. Please try again later.';
+        } catch (\Stripe\Exception\AuthenticationException $e) {
+            $is_invalid[] = 'We are sorry, we cannot authenticate your request. Please try again later.';
+        } catch (\Stripe\Exception\ApiConnectionException $e) {
+            $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            $is_invalid[] = 'We are sorry, we are experiencing connection issues. Please try again later.';
+        } catch (Exception $e) {
+            $is_invalid[] = 'Unknown Error. Please try again later.';
+        }
+
+        if (empty($is_invalid) && $payment_intent->status == 'succeeded') {
+            update_post_meta($order_id, '_stripe_intent_id', $payment_intent->id);
+            return array('id' => $order_id);
+        } else {
+            if (isset($is_invalid[0])){
+                $note = $is_invalid[0];
+            } else {
+                $note = 'Credit Card Payment failed';
+            }
+            $new_order = wc_get_order($order_id);
+            $new_order->update_status('cancelled', $note);
+
+            if (isset($parent_order_id)) {
+                $parent_order = wc_get_order($parent_order_id);
+                $parent_order->update_status('on-hold', $note);
+                update_post_meta($parent_order_id, 'is_paid', 0);
+            }
+
+            return $is_invalid;
+        }
+    
+    } else {
+        return $is_invalid;
+    }
+
+}
 function pos_get_product_details() {
     if (isset($_GET['product_id'])) {
         $product_id = $_GET['product_id'];
@@ -782,8 +1574,8 @@ function get_orders_by_customer_id($customer_id) {
 }
 
 function get_amount() {
-    if (isset($_POST['order_id']) && isset($_POST['customer_id'])) {
-        echo json_encode(get_invoice_balance($_POST['customer_id'], $_POST['order_id']));
+    if (isset($_GET['order_id']) && isset($_GET['customer_id'])) {
+        echo json_encode(get_invoice_balance($_GET['customer_id'], $_GET['order_id']));
     }
 
     wp_die();
@@ -1198,9 +1990,13 @@ function get_invoice_balance($customer_id, $sub_id = '', $no_edit = '') {
     if(!empty($sub_id)) {
         $amount = round($current_invoice, 2);
     } else {
-        $balance = round($transactions_with_balance[0]['balance_not_formatted'], 2);
-        if ($balance < 0) {
-            $amount = abs($balance);
+        if (isset($transactions_with_balance[0])) {
+            $balance = round($transactions_with_balance[0]['balance_not_formatted'], 2);
+            if ($balance < 0) {
+                $amount = abs($balance);
+            } else {
+                $amount = 0;
+            }
         } else {
             $amount = 0;
         }

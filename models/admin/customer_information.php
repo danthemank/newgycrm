@@ -450,7 +450,7 @@ class get_customer_information
                 $age = $difference / (60 * 60 * 24 * 365);
                 $age = intval($age);   
             }
-            $enrolled_classes = $this->get_athletes_classes($user_id, ['option' => 1]);
+            $enrolled_classes = $this->get_athletes_classes($user_id, ['option' => 1, 'meta' => 'classes']);
             $attendance = get_attendance_history($user_id);
 
             $html = '';
@@ -482,7 +482,7 @@ class get_customer_information
 
     public function get_athletes_classes($user_id, $type) {
 
-        $classes = get_user_meta($user_id, 'classes_slots', true);
+        $classes = get_user_meta($user_id, $type['meta'], true);
         $html = '';
 
         if (!empty($classes)) {
@@ -501,7 +501,7 @@ class get_customer_information
                         if (isset($type['option'])) {
                             $html .= '<option>'.$post->post_title . ' SLOT #'.$slot_number+1 .'</option>';
                         } else {
-                            $html .= '<li>'.$post->post_title . ' SLOT #'.$slot_number+1 .' <button type="button" data-class="'.$post->ID.'" data-slot="'.$slots.'" data-modal="#confirm_delete_class" class="edit-btn delete-class-item-icon"></button></li>';
+                            $html .= '<li>'.$post->post_title . ' SLOT #'.$slot_number+1 .' <button type="button" data-class="'.$post->ID.'" data-id="'.$type['meta'].'" data-slot="'.$slots.'" data-modal="#confirm_delete_class" class="edit-btn delete-class-item-icon"></button></li>';
                         }
                     }
                 }
@@ -1448,8 +1448,38 @@ class edit_user_info
 
     public function update_billing_account() {
         if (wp_verify_nonce($_POST['_wpnonce'], 'edit_user_info')) {
-            // remove values for the post array
-            $remove = ['_wpnonce', 'submit_data', 'password', '_wp_http_referer'];
+            if (isset($_FILES['gy_profile_pic'])) {
+
+                $fileName = $_GET['user'].'_profile.png';
+                $args = array(
+                    'post_type' => 'attachment',
+                    'name' => $fileName
+                );
+                $image_posts = get_posts($args);
+                
+                if (isset($image_posts[0])) {
+                    wp_delete_attachment( $image_posts[0]->ID );
+                }
+
+                $upload = wp_upload_bits($fileName, null, file_get_contents($_FILES['gy_profile_pic']['tmp_name']));
+
+                if ($upload['error'] === false) {
+                    $attachment = array(
+                        'post_mime_type' => $upload['type'],
+                        'post_title' => $fileName,
+                        'post_content' => '',
+                        'post_status' => 'inherit'
+                    );
+
+                    $attach_id = wp_insert_attachment($attachment, $upload['file']);
+                    $attach_data = wp_generate_attachment_metadata($attach_id, $upload['file']);
+                    wp_update_attachment_metadata($attach_id, $attach_data);
+                    $image_url = wp_get_attachment_url($attach_id);
+                    update_user_meta($_GET['user'], 'gy_profile_pic', $image_url);
+                }
+            }
+            
+            $remove = ['_wpnonce', 'submit_data', 'password', '_wp_http_referer', 'gy_profile_pic'];
             $values = array_diff_key($_POST, array_flip($remove));
             foreach ($values as $key => $value) {
                 $this->update_userdata(sanitize_text_field($key), sanitize_text_field($value));

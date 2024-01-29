@@ -133,6 +133,7 @@
                                         <div class="dd-button">Categories</div>
                                         <input type="checkbox" class="dd-input">
                                         <ul class="dd-menu" data-id="order-item-0">
+                                            <li class="dd-search"><input data-id="order-items" type="text" placeholder="Search Category" id="search_dd_category"></li>
                                             <?= pos_get_categories() ?>
                                         </ul>
                                     </label>

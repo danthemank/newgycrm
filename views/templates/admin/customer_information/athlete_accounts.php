@@ -59,7 +59,7 @@
             <div class="user_field">
                 <label for="enrolled_classes">Enrolled classes</label>
                 <select id="enrolled_classes">
-                    <?= $this->get_athletes_classes($children_list[1], ['option' => 1]) ?>
+                    <?= $this->get_athletes_classes($children_list[1], ['option' => 1, 'meta' => 'classes_slots']) ?>
                 </select>
             </div>
             

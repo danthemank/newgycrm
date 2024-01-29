@@ -15,6 +15,7 @@
                     <div class="dd-button">Categories</div>
                     <input type="checkbox" class="dd-input">
                     <ul class="dd-menu">
+                        <li class="dd-search"><input type="text" placeholder="Search Category" id="search_dd_category"></li>
                         <?= pos_get_categories() ?>
                     </ul>
                 </label>

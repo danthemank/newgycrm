@@ -44,15 +44,12 @@ class Registration {
                     if (isset($athlete['classes']) || isset($athlete['lessons'])) {
                         $is_enrolled = true;
                     }
-
-                    if (isset($athlete['classes'])) {
-                        $is_enrolled_classes = true;
-                    }
-
-                    if (isset($athlete['lessons'])) {
-                        $is_enrolled_lessons = true;
-                    }
                 }
+            }
+
+            $is_coupon = false;
+            if (isset($_POST['free_class_coupon']) && !empty($_POST['free_class_coupon'])) {
+                $is_coupon = check_gy_coupon($_POST['free_class_coupon']);
             }
 
             if (isset($_POST['stripeToken']) && isset($_POST['customer_id'])) {
@@ -70,6 +67,7 @@ class Registration {
                             $('.payment-section').remove()
                             $('.submit-btn').remove()
                             $('.start-date-row').remove()
+                            $('.coupon-row').remove()
                             $('.add-athlete-btn').remove()
                             $('.referrals-section').remove()
 
@@ -88,10 +86,10 @@ class Registration {
                 $is_valid = $this->validate_registration($_POST);
                 if ($is_valid) {
 
-                    $customer_id = $this->register_new_customer($_POST);
+                    $customer_id = $this->register_new_customer($_POST, $is_coupon);
                     if ($customer_id) {
 
-                        $result = $this->register_athletes($customer_id, $_POST);
+                        $result = $this->register_athletes($customer_id, $_POST, $is_coupon);
                         if (!empty($result)) {
 
                             if (count($result) !== count($_POST['athletes'])) {
@@ -109,10 +107,8 @@ class Registration {
                                 }
                             }
 
-                            if ($is_enrolled_classes && isset($_POST['stripeToken'])) {
+                            if (isset($_POST['stripeToken'])) {
                                 $is_invalid = $this->register_payment($customer_id, $_POST['stripeToken'], $_POST);
-                            } else if ($is_enrolled_lessons) {
-                                $this->enroll_athletes($customer_id, $_POST);
                             }
 
                             if (!empty($is_invalid)) {
@@ -165,6 +161,12 @@ class Registration {
 
     public function enroll_athletes($user_id, $fields) {
         global $wpdb;
+        
+        $is_coupon = false;
+        if (isset($fields['free_class_coupon']) && !empty($fields['free_class_coupon'])) {
+            $is_coupon = check_gy_coupon($fields['free_class_coupon']);
+        }
+
         $children = get_user_meta($user_id, 'smuac_multiaccounts_list', true);
 
         $children = explode(',', $children);
@@ -193,31 +195,30 @@ class Registration {
                             $selected_programs[] = $athlete['private_lessons'];
                         }
 
-                        update_user_meta( $child, 'status_program_participant', 'active' );
-                        update_user_meta( $child, 'classes', array( $selected_programs ) );
-                        update_user_meta( $child, 'classes_slots', array( $slot_ids ) );
-                        update_user_meta( $child, 'slots', array($slots));
+                        if ($is_coupon) {
+                            update_user_meta( $child, 'complementary_classes', array($selected_programs) );
+                            update_user_meta( $child, 'complementary_classes_slots', array($slot_ids) );
+                            update_user_meta( $child, 'complementary_slots', array($slots) );
+                        } else {
+                            update_user_meta( $child, 'status_program_participant', 'active' );
+                            update_user_meta( $child, 'classes', array( $selected_programs ) );
+                            update_user_meta( $child, 'classes_slots', array( $slot_ids ) );
+                            update_user_meta( $child, 'slots', array($slots));
+                        }
+
                         
                     }
             
                 }
             }
         }
+
     }
 
     public function retry_payment($is_invalid, $fields, $customer_id) {
         ?>
         <script>
             jQuery(document).ready(function($) {
-                const url = new URL(window.location.href);
-                const params = url.searchParams;
-                const value = params.get('paramName');
-
-                if (!params.get('retry')) {
-                    url.searchParams.append('retry', 1);
-                    window.history.replaceState(null, null, url.toString());
-                }
-
                 const form = $('#membership_form');
 
                 $('.global-error').append('<div><?= $is_invalid[0] ?></div>')
@@ -225,9 +226,11 @@ class Registration {
                 $('.billing-account-section').remove()
                 $('.athlete-section').remove()
                 $('.start-date-row').remove()
+                $('.coupon-row').remove()
                 $('.add-athlete-btn').remove()
                 $('.referrals-section').remove()
 
+                $('<input/>').appendTo(form).attr('type', 'hidden').attr('name', 'free_class_coupon').attr('value', '<?= $fields['free_class_coupon'] ?>');
                 $('<input/>').appendTo(form).attr('type', 'hidden').attr('name', 'password').attr('value', '<?= $fields['password'] ?>');
                 $('<input/>').appendTo(form).attr('type', 'hidden').attr('name', 'customer_id').attr('value', '<?= $customer_id ?>');
                 $('<input/>').appendTo(form).attr('type', 'hidden').attr('name', 'referral[customer_id]').attr('value', '<?= $fields['referral']['customer_id'] ?>');
@@ -380,7 +383,6 @@ class Registration {
             }
     
             if (!empty($is_invalid)) {
-                dd($is_invalid);
                 return $is_invalid;
             } else {
                 update_user_meta($user_id, 'wp__stripe_customer_id', $stripe_cus_id);
@@ -521,7 +523,7 @@ class Registration {
         foreach ($fields as $key => $field) {
             if ($key !== 'athletes') {          
 
-                if ($key !== 'guardian_first_name_2' && $key !== 'guardian_last_name_2' && $key !== 'guardian_mobile_phone_2' && $key !== 'referral') {
+                if ($key !== 'guardian_first_name_2' && $key !== 'guardian_last_name_2' && $key !== 'guardian_mobile_phone_2' && $key !== 'referral' && $key !== 'free_class_coupon') {
                     $validated = sanitize_text_field( $field );
     
                     if (empty($validated) ) {
@@ -586,7 +588,7 @@ class Registration {
         return $is_valid;
     }
 
-    function register_new_customer($fields) {
+    function register_new_customer($fields, $is_coupon) {
 
         $headers = array('Content-Type: text/html; charset=UTF-8');
         $is_email = get_user_by('email', $fields['email']);
@@ -620,15 +622,15 @@ class Registration {
                     !empty($fields['referral']['type']) ? update_user_meta($user_id, 'referral', $fields['referral']['type']) : null;
                 }
             
+                $headers = array('Content-Type: text/html; charset=UTF-8');
                 if (get_userdata( $user_id )) {
                     $welcome_template = get_posts(array(
                         'post_type' => 'email_template',
                         'posts_per_page' => -1,
                         'post_name__in' => array('welcome-to-gymnastics-of-york')
-                        ));
+                        ));        
             
-                    if (isset($welcome_template)) {
-                        $headers = array('Content-Type: text/html; charset=UTF-8');
+                    if (!empty($welcome_template)) {
             
                         $message = str_replace(
                             ['%user_firstname%'],
@@ -648,11 +650,19 @@ class Registration {
                     'post_name__in' => array('new-user-registration-user_name')
                 ));
                 
+                if ($is_coupon) {
+                    $new_coupon = get_posts(array(
+                        'post_type' => 'email_template',
+                        'posts_per_page' => -1,
+                        'post_name__in' => array('user_name-has-successfully-entered-a-free-class-coupon')
+                        ));
+                }
+                
                 $administrators = get_users();
             
                 foreach ($administrators as $admin) {
                     if ($admin->roles[0] == 'administrator') {
-                        if (isset($notice_admin_template)) {
+                        if (!empty($notice_admin_template)) {
                 
                             $message = str_replace(
                                 ['{{admin_username}}', '{{user_name}}', '{{user_email}}', '{{user_registration}}', '{{link_1}}', '{{link_2}}'],
@@ -668,7 +678,28 @@ class Registration {
             
                             wp_mail($admin->user_email, $subject, $message, $headers);
                         }
+
+                        if (isset($new_coupon) && !empty($new_coupon)) {
+                            $subject = str_replace(
+                                ['{{user_name}}'],
+                                [$fields['username']],
+                                $new_coupon[0]->post_title
+                            );
+                            
+                            $message = str_replace(
+                                ['{{admin_username}}', '{{user_first_name}}', '{{user_email}}'],
+                                [$admin->user_login, $fields['username'], $fields['email']],
+                                $new_coupon[0]->post_content
+                            );
+
+                            wp_mail($admin->user_email, $subject, $message, $headers);
+                        } 
                     }
+                }
+
+                if ($is_coupon) {
+                    $new_action = array('action' => 'Follow Up', 'name' => 'Mr. A');
+                    update_user_meta($user_id, 'action_required', array($new_action));
                 }
 
                 ?>
@@ -712,11 +743,15 @@ class Registration {
         }
     }
 
-    public function register_athletes($user_id, $fields) {
+    public function register_athletes($user_id, $fields, $is_coupon) {
         $parent_user_id              = $user_id;
         $multiaccounts_maximum_limit = 500;
-    
+        $max_free_class = get_option('max_free_registration');
+        $athlete_count = 0;
+
         foreach($fields['athletes'] as $athlete) {
+            $athlete_count += 1;
+
             $current_multiaccounts_number = get_user_meta( $parent_user_id, 'smuac_multiaccounts_number', true );
             if ( '' == $current_multiaccounts_number ) {
                 $current_multiaccounts_number = 0;  
@@ -762,7 +797,11 @@ class Registration {
                     !empty($fields['guardian_first_name_2']) ? update_user_meta($child_user_id, 'guardian_first_name_2', $fields['guardian_first_name_2']) : null;
                     !empty($fields['guardian_last_name_2']) ? update_user_meta($child_user_id, 'guardian_last_name_2', $fields['guardian_last_name_2']) : null;
                     !empty($fields['guardian_mobile_phone_2']) ? update_user_meta($child_user_id, 'guardian_mobile_phone_2', $fields['guardian_mobile_phone_2']) : null;
-    
+                    
+                    if ($athlete_count <= $max_free_class && $is_coupon) {
+                        update_user_meta( $child_user_id, 'complementary_classes_number', '1' );
+                    }
+
                     // set parent multiaccount details meta
                     $current_multiaccounts_number++;
                     update_user_meta( $parent_user_id, 'smuac_multiaccounts_number', $current_multiaccounts_number );

@@ -1,4 +1,4 @@
-<div class="wrap">
+<div class="wrap" id="gycrm_send_emails">
     <h1>Send Emails</h1>
     <div class="tabs">
         <div class="tab" onclick=" openTabs(event, 'tab1' )">Send Email </div>

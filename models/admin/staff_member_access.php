@@ -4,7 +4,8 @@ class StaffAccess{
 
     public function __construct()
     {
-        
+        add_shortcode( 'gy_staff_login', array($this, 'gy_staff_login_shortcode') );
+        add_action('init', array($this, 'gy_is_staff'));
         add_action('admin_init', array($this, 'redirect_staff_to_dashboard'));
         add_action('wp_dashboard_setup', array($this, 'add_custom_dashboard_widget_attendance'));
         add_action('wp_dashboard_setup', array($this, 'add_custom_dashboard_widget_customer_lookup'));
@@ -138,6 +139,125 @@ class StaffAccess{
         }, 11);
 
     }
+
+    public function gy_staff_login_shortcode() {
+        $id = get_current_user_id();
+        $user_roles = get_user_by('id', $id)->roles;
+
+        if ( is_user_logged_in() && !in_array('administrator', $user_roles) ) {
+
+            wp_safe_redirect(home_url());
+            exit;
+
+        } else {
+
+            $staff_roles = ['staff', 'seniorstaff', 'regularstaff', 'juniorstaff', 'entrystaff'];
+            $staff_members = '';
+
+            foreach($staff_roles as $role) {
+                $staff_members .= gycrm_get_members($role);
+            }
+
+            if (isset($_POST['staff_login'])) {
+                $staff_id = $_POST['staff_id'];
+                $pin = $_POST['staff_pin'];
+
+                if (!empty($staff_id) && !empty($pin)) {
+                    $user = get_user_by('id', $staff_id);
+                    $stored_pin = get_user_meta($staff_id, 'gy_login_pin', true);
+                    $is_pin = password_verify($pin, $stored_pin);
+                    
+                    if ($is_pin) {
+                        wp_set_current_user ( $user->ID );
+                        wp_set_auth_cookie  ( $user->ID );
+                        wp_safe_redirect( user_admin_url() );
+                        exit();
+
+                    } else {
+                        ?>
+                            <style>
+                                #staff_login_form .notice-warning {
+                                    display: block !important;
+                                }
+                                #staff_login_form .notice-warning::after {
+                                    content: 'Wrong PIN for username "<?= $user->user_login ?>".';
+                                }
+                            </style>
+                        <?php
+                    }
+                }
+            }
+
+            ?>
+                <form action="" method="POST">
+                    <div id="staff_login_form">
+                        <div>
+                            <div><label for="staff_members">Staff Member</label></div>
+                            <div>
+                                <select id="staff_members" name="staff_id">
+                                    <option value="">Select Member</option>
+                                    <?= $staff_members ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div><label for="staff_pin">PIN</label></div>
+                            <div><input type="password" minlength="4" maxlength="4" id="staff_pin" name="staff_pin"></div>
+                        </div>
+                        
+                        <div><input type="submit" value="Login" name="staff_login"></div>
+                        <div><a href="/lost" target="_blank">Lost your password?</a></div>
+                        <div class="notice notice-warning is-dismissible hidden"></div>
+                    </div>
+                </form>
+            <?php
+        }
+
+    }
+
+    public function gy_is_staff() {
+        $user_roles = wp_get_current_user()->roles;
+            if (in_array('staff', $user_roles) ||
+            in_array('regularstaff', $user_roles) ||
+            in_array('seniorstaff', $user_roles) ||
+            in_array('juniorstaff', $user_roles) ||
+            in_array('entrystaff', $user_roles)
+        ) {
+            add_action('admin_menu', array($this, 'gy_staff_profile'));
+        }
+    }
+
+    public function gy_staff_profile() {
+        add_menu_page(
+            'My Account',
+            'My Account',
+            'edit_posts', 
+            'gy_my_profile',
+            array($this, 'gy_profile_callback'),
+            'dashicons-admin-users',
+            6 
+        );
+    }
+
+    public function gy_profile_callback() {
+        ?>
+        <h1 style="margin-bottom: 2rem;">My Account</h1>
+
+        <div id="set_member_pin">
+            <h2>Login PIN</h2>
+            <input type="hidden" id="gy_staff_members" value="<?= get_current_user_id(); ?>">
+            <div style="margin-bottom: .5rem">
+                <div class="flex-container member-pin">
+                    <input type="password" placeholder="Enter new PIN..." id="gycrm_pin"/>
+                    <input type="button" value="Save PIN" id="save_pin"/>
+                </div>
+                <div class="notice notice-warning is-dismissible hidden">PIN must be 4 characters long.</div>
+                <div class="notice notice-success is-dismissible hidden">PIN saved.</div>
+            </div>
+        </div>
+        <?php
+    }
     
     public function redirect_staff_to_dashboard() {
         $current_user = wp_get_current_user();
@@ -183,7 +303,8 @@ class StaffAccess{
             );
     
             $current_page = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
-    
+
+
             // Check if the current page URL matches any of the target pages
             foreach ($target_pages as $target_page) {
                 if(strpos($current_page, $target_page) !== false) {

@@ -77,7 +77,6 @@
 
                 let response = await $.ajax({
                     url: '<?= admin_url("admin-ajax.php") ?>',
-                        type: 'POST',
                         data: {
                             action: 'get_amount',
                             order_id: orderId,

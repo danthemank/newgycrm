@@ -8,8 +8,8 @@
             } 
             ?>
 
-            <div class="global-error notice notice-warning is-dismissible hidden"></div>
-            <div class="global-success notice notice-success is-dismissible hidden">Success: Payment added</div>
+            <div class="global-error notice-warning is-dismissible hidden"></div>
+            <div class="global-success notice-success is-dismissible hidden">Success: Payment added</div>
             <?php 
             if ($args['get_billing_history'] == 'true') {
                 echo '<div id="balance_table">
@@ -22,11 +22,11 @@
                         echo '<input type="hidden" id="customer" name="customer" value="'.$args['set_user'].'">';
                     }
                     ?>
-                                <input type="hidden" id="pos_nonce" name="pos_nonce" value="<?= $nonce ?>">
+                    <input type="hidden" id="pos_nonce" name="pos_nonce" value="<?= $nonce ?>">
                     <div class="easy-pos-form-container easy-pos-payment">
                     <?php 
                                 if ($args['search_users'] == 'true') {
-                    echo '<div class="flex-container">
+                    echo '<div class="flex-container" id="error_customer">
                             <label for="customer">Select Customer:</label>
                             <select class="hidden" name="customer" id="customer">
                                 <option value="no_account">No Account</option>';
@@ -51,6 +51,7 @@
                                 }
                             echo '</select>
                         </div>
+                        <div class="notice-warning hidden"><p>Error: Please enter a customer.</p></div>
                         ';
                         }
                         if ($args['my_account_page'] !== 'true') {
@@ -96,12 +97,15 @@
                         <?php
                             if ($args['my_account_page'] !== 'true') {
                         ?>
-                        <div class="discount-section flex-container">
-                            <label for="is_discount">Apply Discount?</label>
-                            <div>
-                                <input type="checkbox" name="is_discount" id="is_discount" value="1" />
-                                <span class="hidden"><input class="percentage" type="number" step="any" name="percentage[discount]" id="discount_percentage" /><span>  %</span></span>
+                        <div class="discount-section">
+                            <div class="flex-container" id="error_is_discount">
+                                <label for="is_discount">Apply Discount?</label>
+                                <div>
+                                    <input type="checkbox" name="is_discount" id="is_discount" value="1" />
+                                    <span class="hidden"><input class="percentage" type="number" step="any" name="percentage[discount]" id="discount_percentage" /><span>  %</span></span>
+                                </div>
                             </div>
+                            <div class="notice-warning hidden"><p>Error: Please enter discount.</p></div>
                         </div>
                         <div class="discount-container hidden">
                             <div class="flex-container not-margin">
@@ -119,9 +123,12 @@
                                 <?php
                             }
                         ?>
-                        <div class="flex-container not-margin">
-                            <label for="amount">Amount <?= ($args['my_account_page'] !== 'true' ? 'Received' : '') ?></label>
-                            <input type="number" step="any" name="amount" id="amount" />
+                        <div>
+                            <div class="flex-container not-margin" id="error_amount">
+                                <label for="amount">Amount <?= ($args['my_account_page'] !== 'true' ? 'Received' : '') ?></label>
+                                <input type="number" step="any" name="amount" id="amount" />
+                            </div>
+                            <div class="notice-warning hidden"><p>Error: Please enter amount greater than 0.</p></div>
                         </div>
                         <?php if ($args['my_account_page'] !== 'true') {
                                 ?>
@@ -131,12 +138,15 @@
                                 <input type="number" step="any" id="discount_given" disabled/>
                             </div>
                         </div>
-                        <div class="flex-container fee-section">
-                            <label for="is_fee">Apply Fee?</label>
-                            <div>
-                                <input type="checkbox" name="is_fee" id="is_fee" value="1" />
-                                <span class="hidden"><input type="number" step="any" name="percentage[fee]" class="fee_percentage" /><span>  %</span></span>
+                        <div class="fee-section">
+                            <div class="flex-container" id="error_is_fee">
+                                <label for="is_fee">Apply Fee?</label>
+                                <div>
+                                    <input type="checkbox" name="is_fee" id="is_fee" value="1" />
+                                    <span class="hidden"><input type="number" step="any" name="percentage[fee]" class="fee_percentage" /><span>  %</span></span>
+                                </div>
                             </div>
+                            <div class="notice-warning hidden"><p>Error: Please enter fee.</p></div>
                         </div>
                         <?php
                         } else {
@@ -191,11 +201,11 @@
                                     </div>
                                     <div class="add_card">
                                     </div>
-                                    <div style="margin-top: 1rem;" class="notice notice-warning is-dismissible hidden" id="card_errors"></div>
+                                    <div style="margin-top: 1rem;" class="notice-warning hidden" id="card_errors"></div>
                                 </div>
                                 <div class="payment-container ach hidden">
                                     <h2>ACH</h2>
-                                    <div class="notice notice-warning is-dismissible hidden" id="ach-error-message"></div>
+                                    <div class="notice-warning hidden" id="ach-error-message"></div>
                                     <div class="ach_exists hidden">
                                         <div class="flex-container">
                                             <div>
@@ -226,17 +236,19 @@
                                         ?>
                                 <div class="payment-container check hidden">
                                     <h2>Check</h2>
-                                    <div class="flex-container">
+                                    <div class="flex-container" id="error_check_number">
                                         <label for="check_number">Check Number</label>
                                         <input type="text" id="check_number" name="check_number">
                                     </div>
+                                    <div class="notice-warning hidden"><p>Error: Please enter check number.</p></div>
                                 </div>
                                 <div class="payment-container cash hidden">
                                     <h2>Cash</h2>
-                                    <div class="flex-container">
+                                    <div class="flex-container" id="error_cash_receipt">
                                         <label for="cash_receipt">Receipt Number</label>
                                         <input type="text" id="cash_receipt" name="cash_receipt">
                                     </div>
+                                    <div class="notice-warning hidden"><p>Error: Please enter receipt number.</p></div>
                                 </div>
                                 <div class="payment-container note">
                                     <div class="flex-container">

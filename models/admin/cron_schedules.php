@@ -150,7 +150,7 @@ class CronSchedules
                         }
 
                         if (!$is_applied) {
-                            if ($current_time->diff($invoice_creation)->days >= $days_late) {
+                            if ($current_time->diff($invoice_creation)->days >= $days_late && $current_time >= $invoice_creation) {
             
                                 if ($type == 'percentage') {
                                     $fee = floatval($order->get_total() * ($amount / 100));
@@ -183,7 +183,7 @@ class CronSchedules
                         }
 
                         if (!$is_applied) {
-                            if ($current_time->diff($invoice_creation)->days >= $days_late) {
+                            if ($current_time->diff($invoice_creation)->days >= $days_late && $current_time >= $invoice_creation) {
             
                                 if ($type == 'percentage') {
                                     $fee = floatval($sub->get_total() * ($amount / 100));

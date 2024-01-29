@@ -5,22 +5,40 @@ function get_attendance() { ?>
     <script type="text/javascript" >
     jQuery(document).ready(function($) {
 
-        
         $('.class-slot-filter #class-filter-dropdown').on('change', function() {
-            $('.class-slot-filter#slot-filter').hide()
+            let containerId = $(this).data('id')
+            console.log(containerId);
+            $('.'+containerId+' .class-slot-filter#slot-filter').hide()
+            $('.'+containerId+' #slot-filter-dropdown').empty()
+            $('.'+containerId+' #slot_selected').val('')
+            $('.'+containerId+' #slot_selected').data('number', '')
+            $('.'+containerId+' #slot_options label').text('Select Option')
+
             let id = $(this).val()
             
             $.ajax({
                 url: <?php echo '"'.admin_url( 'admin-ajax.php' ).'"'; ?>,
                 data : {
                     action: 'get_all_slots',
-                    class: id
+                    class: id,
+                    containerId:containerId
                 },
                 success: function(response) {
-                    $('.class-slot-filter #slot-filter-dropdown').html(JSON.parse(response))
-                    $('.class-slot-filter #slot-filter').show()
+                    console.log(response);
+                    $('.'+containerId+' .class-slot-filter #slot-filter-dropdown').html(JSON.parse(response))
+                    $('.'+containerId+' .class-slot-filter #slot-filter').show()
                 }
             });
+        })
+
+        $('body').on('click', '.class-slot-filter #slot-filter-dropdown > li', function() {
+            let containerId = $(this).data('id')
+            let slot = $(this).data('slot')
+            let slotNumber = $(this).data('number')
+
+            $('.'+containerId+' #slot_selected').val(slot)
+            $('.'+containerId+' #slot_selected').data('number', slotNumber)
+            $('.'+containerId+' #slot_options label').text(slotNumber)
         })
 
         let date = $('#attendance-date-filter').val();
@@ -49,7 +67,7 @@ function get_attendance() { ?>
 
             if (classId !== '') {
                 getClassesAccordingDay(date, {class: classId, type: 'get_slots'}).then(response => {
-                    $('#slot-filter-dropdown').html(response)
+                    $('#slot-filter-dropdown').html(response.html)
                     $('#slot-filter').show()
                 })
             }
@@ -82,17 +100,42 @@ function get_attendance() { ?>
         function changeClassesByDate(date, programClass = '', scheduleId = '') {
             if (programClass == '' && scheduleId == '') {
                 getClassesAccordingDay(date, {}).then(response => {
-                    $('#class-filter-dropdown').html(response)
+                    $('#class-filter-dropdown').html(response.html)
+                    renderSlide(response.sorted_classes, date)
                 })
             }
             if (programClass !== '' && scheduleId !== '') {
                 getClassesAccordingDay(date, {class: programClass, type: 'get_class'}).then(response => {
-                    $('#class-filter-dropdown').html(response)
+                    $('#class-filter-dropdown').html(response.html)
+                    renderSlide(response.sorted_classes, date, scheduleId)
                 })
                 getClassesAccordingDay(date, {class: programClass, slot: scheduleId, type: 'get_slots'}).then(response => {
                     $('#slot-filter').show()
-                    $('#slot-filter-dropdown').html(response)
+                    $('#slot-filter-dropdown').html(response.html)
                 })
+            }
+        }
+
+        function renderSlide(sortedClasses, date, scheduleId = '') {
+            let previousClass = null;
+            let nextClass = null;
+
+            if (scheduleId !== '') {
+                let index = Object.keys(sortedClasses).findIndex(key => sortedClasses[key].meta_id === scheduleId);
+                previousClass = index > 0 ? sortedClasses[Object.keys(sortedClasses)[index - 1]] : null;
+                nextClass = index + 1 < Object.keys(sortedClasses).length ? sortedClasses[Object.keys(sortedClasses)[index + 1]] : null;
+            } else {
+                nextClass = Object.values(sortedClasses)[0];
+            }
+
+            if (previousClass) {
+                $('#attendance_tables .left-slide').attr('href', `/wp-admin/admin.php?page=user-list&class=${previousClass.class_id}&sd=${previousClass.meta_id}&date=${date}`);
+                $('.attendance-slide.left-slide').removeClass('hidden')
+            }
+            
+            if (nextClass) {
+                $('.attendance-slide.right-slide').removeClass('hidden')
+                $('#attendance_tables .right-slide').attr('href', `/wp-admin/admin.php?page=user-list&class=${nextClass.class_id}&sd=${nextClass.meta_id}&date=${date}`);
             }
         }
 
@@ -147,9 +190,11 @@ function get_attendance() { ?>
         }
 
         $('input[name^="save_attendance"]').on('change', function() {
+            $('#attendance_tables .notice-warning').addClass('hidden')
 
             let user = $(this).data('user');            
-            let attendance = $(this).val();
+            let attendance = $(this)
+            let attendanceVal = $(attendance).val()
             let post = $('#post_id').val()
             let date = $('#date').val()
             let schedule = $('#schedule_id').val()
@@ -159,14 +204,20 @@ function get_attendance() { ?>
                 url: <?php echo '"'.admin_url( 'admin-ajax.php' ).'"'; ?>,
                 data : {action: "save_attendance", 
                         user: user,
-                        attendance:  attendance,
+                        attendance:  attendanceVal,
                         post: post,
                         date: date,
                         schedule: schedule,
                         nonce: nonce,
                 },
                 success: function(response) {
-                    console.log(response);
+                    response = JSON.parse(response)
+                    if (parseInt(response) !== 1 && parseInt(response) !== 0) {
+                        $(attendance).prop('checked', false)
+                        $('#attendance_tables .notice-warning p').text(response)
+                        $('#attendance_tables .notice-warning').removeClass('hidden')
+                        $('#attendance_tables .notice-warning').scrollIntoView({ behavior: 'smooth' });
+                    }
                 }
             });
 
@@ -235,6 +286,26 @@ function get_classes_by_day() {
             }
         }
 
+        $hours = [];
+        foreach($classes_slots as $class) {
+            foreach ($class as $slot) {
+                $hours[$slot['meta_id']]['class_id'] = $slot['id'];
+                $hours[$slot['meta_id']]['meta_id'] = $slot['meta_id'];
+                $hours[$slot['meta_id']]['start_time'] = $slot['start_time_hour'];
+            }
+        }
+
+        uasort($hours, function($a, $b) {
+            $hour1 = gy_parse_time($a['start_time']);
+            $hour2 = gy_parse_time($b['start_time']);
+            
+            if ($hour1 === $hour2) {
+                return 0;
+            } else {
+                return $hour1 - $hour2;
+            }
+        });
+
         if (!empty($classes_slots)) {
             $output = '<option value="">Select Option</option>';
     
@@ -265,11 +336,24 @@ function get_classes_by_day() {
             $output = '<option>Empty</option>';
         }
 
-        echo json_encode($output);
+        echo json_encode(array('html' => $output, 'sorted_classes' => array_values($hours)));
         }
 
         die();
 }
+
+    function gy_parse_time($time_string) {
+        $parts = explode(":", $time_string);
+        $time = explode(" ", $parts[1]);
+        
+        $hour = (int) $parts[0];
+        
+        if ($time[1] === "PM") {
+            $hour += 12;
+        }
+        
+        return $hour;
+    }
 
     function get_class_days($key, $day, $post, $day_week = null) {
         global $wpdb;
@@ -343,6 +427,7 @@ function get_classes_by_day() {
                         'slot_id' => $slot_id,
                         'meta_id' => $data[0]->meta_id,
                         'start_time' => $slot_number.$start_time,
+                        'start_time_hour' => $time,
                     );
                 }
             }
@@ -366,10 +451,15 @@ function save_attendance() {
             'is_edit' => $_GET['is_edit'],
         );
     
-        validate_action($attendance_obj);
-    
-        echo json_encode(1);
+        $is_valid = validate_action($attendance_obj);
 
+        if (!$is_valid) {
+            $response = 1;
+        } else {
+            $response = 'There are no more complementary classes left for this user.';
+        }
+        
+        echo json_encode($response);
     } else {
         echo json_encode(0);
     }
@@ -644,7 +734,6 @@ function non_payment(){
     }
 }
 
-
 function validate_action($attendance_obj)
 {
     $user = get_user_by('id', $attendance_obj['user']);
@@ -652,35 +741,7 @@ function validate_action($attendance_obj)
 
     $schedule = metadata_exists('post', $attendance_obj['post'], $attendance_obj['schedule']);
     if (isset($user) && isset($post) && isset($schedule) && !empty($attendance_obj['date'])) {
-        save_class_attendance($attendance_obj);
-    }
-}
-
-function edit_class_attendance($attendance) {
-    global $wpdb;
-
-    $sql = 'SELECT *
-        FROM wp_class_attendance c
-        WHERE c.user_id = %s
-            AND c.post_id = %s
-            AND c.post_meta = %s
-            AND c.date = %s';
-
-    $where = [$attendance['user'], $attendance['post'], $attendance['schedule'], $attendance['date']];
-
-    $is_attendance = $wpdb->get_results(
-        $wpdb->prepare( $sql, $where)
-    );
-
-    if (!empty($is_attendance)) {
-        $sql = 'UPDATE wp_class_attendance c
-                SET attendance = "'.$attendance['attendance'].'"
-                WHERE c.user_id = '.$attendance['user'].'
-                    AND c.post_id = '.$attendance['post'].'
-                    AND c.post_meta = '.$attendance['schedule'].'
-                    AND c.date = "'.$attendance['date'].'"';
-
-        $wpdb->query($sql);
+        return save_class_attendance($attendance_obj);
     }
 }
 
@@ -721,31 +782,49 @@ function save_class_attendance($attendance)
         $is_attendance = $wpdb->get_results(
             $wpdb->prepare( $sql, $where)
         );
-        echo '<pre>';
-        var_dump($is_attendance);
-        echo '<pre>'; 
+
+        $is_complementary = false;
+        $complementary_classes = intval(get_user_meta($attendance['user'], 'complementary_classes_number', true));
+        $comp_classes = get_user_meta($attendance['user'], 'complementary_classes', true);
+        if ($attendance['attendance'] == 'present' && !empty($comp_classes)) {
+            if ($complementary_classes === 0) {
+                $is_complementary = true;
+            } else {
+                $complementary_classes -= 1;
+                update_user_meta($attendance['user'], 'complementary_classes_number', $complementary_classes);
+            }
+        }
+        
 
         if (!empty($is_attendance)) {
-            $sql = 'UPDATE wp_class_attendance c
-                    SET attendance = "'.$attendance['attendance'].'"
-                    WHERE c.user_id = '.$attendance['user'].'
-                        AND c.post_id = '.$attendance['post'].'
-                        AND c.post_meta = '.$attendance['schedule'].'
-                        AND c.date = "'.$attendance['date'].'"';
+            if (!$is_complementary || $attendance['attendance'] == 'absent') {
+                $sql = 'UPDATE wp_class_attendance c
+                        SET attendance = "'.$attendance['attendance'].'"
+                        WHERE c.user_id = '.$attendance['user'].'
+                            AND c.post_id = '.$attendance['post'].'
+                            AND c.post_meta = '.$attendance['schedule'].'
+                            AND c.date = "'.$attendance['date'].'"';
+    
+                $wpdb->query($sql);
 
-            $wpdb->query($sql);
+                $is_complementary = false;
+            }
 
         } else {
-            $data = array(
-                'user_id' => $attendance['user'],
-                'post_id' => $attendance['post'],
-                'date' => $attendance['date'],
-                'attendance' => $attendance['attendance'],
-                'post_meta' => $attendance['schedule'],
-            );
-            
-            $wpdb->insert( $table_name, $data );
+            if (!$is_complementary) {
+                $data = array(
+                    'user_id' => $attendance['user'],
+                    'post_id' => $attendance['post'],
+                    'date' => $attendance['date'],
+                    'attendance' => $attendance['attendance'],
+                    'post_meta' => $attendance['schedule'],
+                );
+                
+                $wpdb->insert( $table_name, $data );
+            }
         }
+
+        return $is_complementary;
 
     }
 

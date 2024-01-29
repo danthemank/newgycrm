@@ -1,5 +1,5 @@
 <div id="tab1"  class="tab-content" style="display:block">
-        <form method="post" action="">
+        <form method="post" action="" id="gycrm_send_manual">
             <?php wp_nonce_field('send_emails_action'); ?>
             <table class="form-table">
                 <tr valign="top">
@@ -168,7 +168,7 @@
 
             </table>
             <p class="submit">
-                <input type="submit" class="button-primary" name="submit_email" value="<?php _e('Send Emails') ?>" />
+                <input type="submit" id="gycrm_send_emails_btn" class="button-primary" name="submit_email" value="<?php _e('Send Emails') ?>" />
             </p>
 
             <div class="box-modal">

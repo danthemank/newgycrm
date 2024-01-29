@@ -49,6 +49,9 @@ class AdminSettings{
 		register_setting('gy_crm_settings_notes_group', 'custom_note_subject');
 		register_setting('gy_crm_settings_notes_group', 'custom_note_replyto');
 		register_setting('gy_crm_settings_notes_group', 'custom_note_bcc');
+
+		register_setting('gy_crm_settings_coupons_group', 'max_free_registration');
+		register_setting('gy_crm_settings_coupons_group', 'code_free_class');
 		
         add_settings_section(
             'admin_settings_pricing_section',
@@ -66,19 +69,41 @@ class AdminSettings{
 
         add_settings_section(
             'admin_settings_roles_section',
-            'Manage role capabitilies',
+            'Manage staff members',
             array( $this, 'admin_settings_main_section_callback' ),
             'gy_crm_settings_roles_group'
         );
 
         add_settings_section(
             'admin_settings_notes_section',
-            'Manage emails from Customer Information "Notes"',
+            'Manage emails',
             array( $this, 'admin_settings_main_section_callback' ),
             'gy_crm_settings_notes_group'
         );
+
+        add_settings_section(
+            'admin_settings_coupons_section',
+            'Manage Coupons',
+            array( $this, 'admin_settings_main_section_callback' ),
+            'gy_crm_settings_coupons_group'
+        );
 		
 		
+
+		add_settings_field(
+			'code_free_class',
+			'Free Class Coupon Code',
+			array($this, 'code_free_class_callback'),
+			'gy_crm_settings_coupons_group',
+			'admin_settings_coupons_section'
+		);
+		add_settings_field(
+			'max_free_registration',
+			'Limit of number of athletes who receive a Free Class upon registration',
+			array($this, 'max_free_registration_callback'),
+			'gy_crm_settings_coupons_group',
+			'admin_settings_coupons_section'
+		);
 
 		add_settings_field(
 			'halfhour_duration',
@@ -266,8 +291,16 @@ class AdminSettings{
 		
 		add_settings_field(
 			'staff_roles_capabilities',
-			'Role',
+			'Select Staff',
 			array($this, 'role_custom_capabilities_callback'),
+			'gy_crm_settings_roles_group',
+			'admin_settings_roles_section'
+		);
+		
+		add_settings_field(
+			'staff_roles_pin',
+			' ',
+			array($this, 'role_pin_callback'),
 			'gy_crm_settings_roles_group',
 			'admin_settings_roles_section'
 		);
@@ -374,6 +407,29 @@ class AdminSettings{
 
 	}
 
+	public function role_pin_callback() {
+		?>
+		<h3>PIN</h3>
+		<div id="set_member_pin">
+			<div style="margin-bottom: .5rem">
+				<select id="gy_staff_members">
+					<option value="">Select Member</option>
+					<?= gycrm_get_members('staff') ?>
+				</select>
+			</div>
+			<div style="margin-bottom: .5rem">
+				<div class="flex-container member-pin">
+					<input type="password" placeholder="Enter new PIN..." id="gycrm_pin"/>
+					<input type="button" value="Save PIN" id="save_pin"/>
+				</div>
+				<div class="notice notice-warning is-dismissible hidden">PIN must be 4 characters long.</div>
+				<div class="notice notice-success is-dismissible hidden">PIN saved.</div>
+			</div>
+		</div>
+
+		<?php
+	}
+
     public function role_custom_capabilities_callback() {
 		$roles = array('staff', 'seniorstaff', 'regularstaff', 'juniorstaff', 'entrystaff');
 
@@ -392,6 +448,7 @@ class AdminSettings{
 
 		?>
 
+		<h3>Access Control</h3>
 		<div id="gycrm_roles_capabilities">
 			<div style="margin-bottom: .5rem">
 				<input type="checkbox" value="1" class="gycrm-capability" <?= isset($manager_capabilities['read_customer_information']) ? 'checked' : '' ?> data-id="read_customer_information">
@@ -453,7 +510,16 @@ class AdminSettings{
 		<input type="email" id="custom_note_bcc" name="custom_note_bcc" value="<?= !empty(get_option( 'custom_note_bcc' )) ? get_option( 'custom_note_bcc' ) : 'ca@gymnasticsofyork.com' ?>" />
         <?php
 	}
-
+    public function code_free_class_callback() {
+		?>
+		<input type="text" minlength="5" id="code_free_class" name="code_free_class" value="<?= get_option( 'code_free_class' ) ?>" />
+        <?php
+	}
+    public function max_free_registration_callback() {
+		?>
+		<input type="number" min="0" id="max_free_registration" name="max_free_registration" value="<?= get_option( 'max_free_registration' ) ?>" />
+        <?php
+	}
     public function halfhour_week_callback() {
 		?>
 		<span>$</span>

@@ -2,25 +2,19 @@
 add_action( 'wp_footer', 'ajax_registration' );
 function ajax_registration() { ?>
     <script type="text/javascript" >
-
-    jQuery(document).ready(function($) {
-
-	const elements = stripe.elements();
+		
+	jQuery(document).ready(function($) {
+		
+		const elements = stripe.elements();
 	const style = {
 			base: {
 				fontSize: '16px',
 				color: '#32325d',
 			},
 	};
-
+	
 	let	card = elements.create('card', {style});
-
-	const url = new URL(window.location.href);
-	const params = url.searchParams;
-
-	if (params.get('retry')) {
-		renderCard()
-	}
+	card.mount('#membership_form .add_card');
 
 	function getAthleteFields(athletes, input, id, enrolled) {
 		input.each(function(ind, ele) {
@@ -49,25 +43,6 @@ function ajax_registration() { ?>
 		return athletes
 	}
 
-	function renderCard() {
-		$('.submit-btn').attr('disabled', true)
-		$('.submit-btn').addClass('disabled')
-
-		$.ajax({
-			type: 'GET',
-			url: obj.ajaxurl,
-			data: {
-				action: 'render_payment_section'
-			},
-			success: function(response) {
-				response = JSON.parse(response)
-				$('#card_placement').html(response)
-				card.mount('#membership_form .add_card');
-				$('.submit-btn').removeAttr('disabled')
-				$('.submit-btn').removeClass('disabled')
-			}
-		});
-	}
 
 	//*************** */ CHANGE REGISTRATION FORM CHECK ICONS
 
@@ -120,14 +95,6 @@ function ajax_registration() { ?>
 					
 				}
 			});
-
-			if (val == 'classes') {
-				let paymentSection = $('#card_placement div').length
-
-				if (!paymentSection) {
-					renderCard()
-				}
-			}
 			
 		} else {
 			$(check+'_checked').hide()
@@ -135,17 +102,6 @@ function ajax_registration() { ?>
 			$(check+'_container div').remove()
 
 			getSelectedEnrollment(athlete)
-		}
-
-		
-		$('#membership_form .programs-checked').each(function(i, el) {
-			if ($(el).is(':checked')) {
-				programsSelected = true
-			}
-		})
-
-		if (!programsSelected) {
-			$('#card_placement div').remove()
 		}
 	})
 
@@ -352,13 +308,18 @@ function ajax_registration() { ?>
 				let id = $(el).attr('id');
 				let input = $('#'+id+' *[name^="athletes"]')
 
+				if (!$('#'+id+' .registration_athlete_enroll .check-btn:checked').length) {
+					isInadmissible = true
+					$('#'+id+' .registration_athlete_enroll .error-enroll').removeClass('hidden')
+				}
+
 				athletes = getAthleteFields(athletes, input, id, enrolled)
 			});
 
 			fields['athletes'] = athletes
 
 			resolve(fields)
-		});
+});
 
 		await promise.then(function() {
 			$.ajax({
@@ -401,34 +362,34 @@ function ajax_registration() { ?>
 					loader.addClass('hidden');
 
 				} else if (!isInadmissible) {
-					programsSelected = false
 
-					$('#membership_form .programs-checked').each(function(i, el) {
-						if ($(el).is(':checked')) {
-							programsSelected = true
-						}
-					})
+					let card = elements.getElement('card');
+					const {token, error} = await stripe.createToken(card)
+					if (error) {
+						const errorElement = $('#card_errors');
+						errorElement.removeClass('hidden')
+						errorElement.show()
+						errorElement.text(error.message);
 
-					if (programsSelected) {
-						let card = elements.getElement('card');
-						const {token, error} = await stripe.createToken(card)
-						if (error) {
-							const errorElement = $('#card_errors');
-							errorElement.removeClass('hidden')
-							errorElement.show()
-							errorElement.text(error.message);
-	
-							btn.removeAttr('disabled');
-							btn.removeClass('disabled');
-							loader.addClass('hidden');
-						} else {
-							stripeTokenHandler(token);
-						}
+						btn.removeAttr('disabled');
+						btn.removeClass('disabled');
+						loader.addClass('hidden');
 					} else {
-						let form = $('#membership_form');
-						form.submit();
+						stripeTokenHandler(token);
 					}
-
+					
+				} else {
+					let warnings = $('.notice-warning').filter(':not(.hidden)').first();
+					
+					if (warnings.length) {
+						$('html, body').animate({
+							scrollTop: warnings.offset().top
+						}, 500);
+					}
+					
+					btn.removeAttr('disabled');
+					btn.removeClass('disabled');
+					loader.addClass('hidden');
 				}
 
 
@@ -714,18 +675,18 @@ function ajax_registration() { ?>
 		}
 	};
 
-      async function ajaxResponse(targetFields, targetForm, edit = false) {
-          let response = await $.ajax({
-                url: <?php echo '"'.admin_url( 'admin-ajax.php' ).'"'; ?>,
-                data : {action: "validate_form", 
-                        targetFields : targetFields, 
-                        'form' : targetForm,
-						'edit' : edit
-            }
-        });
-			// console.log(response);
-			return Promise.resolve(JSON.parse(response));
-        }
+	async function ajaxResponse(targetFields, targetForm, edit = false) {
+		let response = await $.ajax({
+			url: <?php echo '"'.admin_url( 'admin-ajax.php' ).'"'; ?>,
+			data : {action: "validate_form", 
+					targetFields : targetFields, 
+					'form' : targetForm,
+					'edit' : edit
+		}
+	});
+		// console.log(response);
+		return Promise.resolve(JSON.parse(response));
+	}
 	
 });
     </script> 
@@ -758,6 +719,17 @@ add_action("wp_ajax_nopriv_render_payment_section", "render_payment_section");
 
 add_action("wp_ajax_create_new_subaccount", "create_new_subaccount");
 add_action("wp_ajax_nopriv_create_new_subaccount", "create_new_subaccount");
+
+function check_gy_coupon($coupon) {
+	$enteredCoupon = $coupon;
+	$coupon = get_option('code_free_class');
+
+	if (strtolower($enteredCoupon) === strtolower($coupon)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
 
 function render_payment_section() {
 	ob_start();

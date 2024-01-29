@@ -79,6 +79,7 @@
                 </div>
             </label>
         </div>
+        <div class="error-enroll notice notice-warning is-dismissible hidden">Error: Please choose an option.</div>
     </div>
         
         <div id="private_athlete_<?= $athlete_id ?>_container">

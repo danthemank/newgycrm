@@ -17,7 +17,9 @@
     </form>
 
     <div class="hidden" id="confirm_delete_category">
+        <div class="modal-header"></div>
         <form method="post" action="" class="flex-container confirm-delete custom-modal">
+
             <h2>Are you sure you want to delete <span id="cat_name"></span>?</h2>
             
             <input type="hidden" id="cat_id">

@@ -1,4 +1,5 @@
 <?php
+
 // Agregar contenido personalizado después del botón "Sign up now" en el checkout
 add_action( 'woocommerce_review_order_after_submit', 'box_monthly' );
 function box_monthly() {
@@ -154,7 +155,7 @@ add_action('init', 'custom_handle_password_reset');
 function get_customer_transactions($user_id) {
     global $wpdb;
     $transactions = array();
-    $table = ' <table class="gy-table user_balance_table custom-table responsive_table">';
+    $table = ' <table class="gy-table user_balance_table custom-table responsive_table" id="balance_table">';
     $table .= '<thead>
                 <tr>
                     <th class="date" >Date</th>
@@ -742,7 +743,6 @@ function get_customer_transactions_edit($user_id) {
                 AND comment_author = '{$order_id}'
                 AND comment_approved = 1;";
         $customer_invoice = $wpdb->get_results($sql);
-
         foreach ($customer_invoice as $invoice) {
             $is_due = false;
             $due_date = get_comment_meta($invoice->comment_id, 'due_date', true);
@@ -1168,12 +1168,31 @@ function save_tag_to_athlete() {
 add_action('wp_ajax_get_all_slots', 'get_all_slots'); 
 add_action('wp_ajax_get_multiselect_slots', 'get_multiselect_slots'); 
 add_action('wp_ajax_enroll_athlete', 'enroll_athlete'); 
+add_action('wp_ajax_save_complementary_left', 'save_complementary_left'); 
+
+function save_complementary_left() {
+    if (isset($_GET['athleteId']) && isset($_GET['complementary_number'])) {
+        if (!empty($_GET['complementary_number'])) {
+            $saved = update_user_meta($_GET['athleteId'], 'complementary_classes_number', $_GET['complementary_number']);
+        } else {
+            $saved = update_user_meta($_GET['athleteId'], 'complementary_classes_number', 0);
+        }
+
+        if ($saved) {
+            echo json_encode(1);
+        } else{
+            echo json_encode(0);
+        }
+    }
+
+    die();
+}
 
 function enroll_athlete() {
-    if (isset($_GET['programs']) && isset($_GET['slots']) && isset($_GET['athleteId'])) {
+    if (isset($_GET['programs']) && isset($_GET['slots']) && isset($_GET['athleteId']) && isset($_GET['meta'])) {
         global $wpdb;
 
-        $current_slots = get_user_meta( $_GET['athleteId'], 'classes_slots', true );
+        $current_slots = get_user_meta( $_GET['athleteId'], $_GET['meta'], true );
 
         if (!empty($_GET['programs']) && !empty($_GET['slots'])) {
             $selected_programs = explode(',', $_GET['programs']);
@@ -1188,26 +1207,38 @@ function enroll_athlete() {
                 $slot_ids[$results[0]->post_id][] = $slot;
             }
 
-            if (!empty($current_slots)) {
-                add_enrollment_note( $current_slots[0], $slot_ids, 'Leaving ');
-                add_enrollment_note( $slot_ids, $current_slots[0], 'Enrolled in ');
+            if ($_GET['meta'] == 'classes_slots') {
+                if (!empty($current_slots)) {
+                    add_enrollment_note( $current_slots[0], $slot_ids, 'Leaving ');
+                    add_enrollment_note( $slot_ids, $current_slots[0], 'Enrolled in ');
+                } else {
+                    add_enrollment_note( $slot_ids, [], 'Enrolled in ');
+                }
+    
+                update_user_meta( $_GET['athleteId'], 'classes', array($selected_programs) );
+                update_user_meta( $_GET['athleteId'], 'classes_slots', array($slot_ids) );
+                update_user_meta( $_GET['athleteId'], 'slots', array($selected_slots) );
             } else {
-                add_enrollment_note( $slot_ids, [], 'Enrolled in ');
+                update_user_meta( $_GET['athleteId'], 'complementary_classes', array($selected_programs) );
+                update_user_meta( $_GET['athleteId'], 'complementary_classes_slots', array($slot_ids) );
+                update_user_meta( $_GET['athleteId'], 'complementary_slots', array($selected_slots) );
             }
 
-            update_user_meta( $_GET['athleteId'], 'classes', array($selected_programs) );
-            update_user_meta( $_GET['athleteId'], 'classes_slots', array($slot_ids) );
-            update_user_meta( $_GET['athleteId'], 'slots', array($selected_slots) );
-
+            
         } else if (empty($_GET['programs']) && empty($_GET['slots'])) {
 
-            if (!empty($current_slots)) {
-                add_enrollment_note( $current_slots[0], [], 'Leaving ');
+            if ($_GET['meta'] == 'classes_slots') {
+                if (!empty($current_slots)) {
+                    add_enrollment_note( $current_slots[0], [], 'Leaving ');
+                }
+                update_user_meta( $_GET['athleteId'], 'classes', '' );
+                update_user_meta( $_GET['athleteId'], 'classes_slots', '' );
+                update_user_meta( $_GET['athleteId'], 'slots', '' );
+            } else {
+                update_user_meta( $_GET['athleteId'], 'complementary_classes', '' );
+                update_user_meta( $_GET['athleteId'], 'complementary_classes_slots', '' );
+                update_user_meta( $_GET['athleteId'], 'complementary_slots', '' );
             }
-            
-            update_user_meta( $_GET['athleteId'], 'classes', '' );
-            update_user_meta( $_GET['athleteId'], 'classes_slots', '' );
-            update_user_meta( $_GET['athleteId'], 'slots', '' );
         }
     }
 
@@ -1327,7 +1358,7 @@ function get_slots_by_class($class) {
         foreach($slot as $schedule) {
             $days[] = $schedule['time'];
             $classes[$schedule['slot']]['slot'] = $schedule['slot'];
-            $classes[$schedule['slot']]['days'] = implode(', ', $days);
+            $classes[$schedule['slot']]['days'] = $days;
             $classes[$schedule['slot']]['slot_number'] = $schedule['slot_number'];
             $classes[$schedule['slot']]['meta_id'] = $schedule['meta_id'];
         }
@@ -1342,14 +1373,19 @@ function get_slots_by_class($class) {
 
 
 function get_all_slots() {
-    if ($_GET['class']) {
+    if ($_GET['class'] && $_GET['containerId']) {
         $class = $_GET['class'];
-        $output = '<option value="">Select Option</option>';
+        $output = '';
 
         $classes = get_slots_by_class($class);
 
         foreach($classes as $class) {
-            $output .= '<option class="class-option" value="'.$class['slot'].'" data-meta="'.$class['meta_id'].'" data-number="'. $class['slot_number'].'">'. $class['slot_number'].' '.$class['days'].'</option>';
+            $output .= '<li class="class-option" data-slot="'.$class['slot'].'" data-id="'.$_GET['containerId'].'" data-meta="'.$class['meta_id'].'" data-number="'. $class['slot_number'].'">'. $class['slot_number'].'</li>
+                        <ul class="hidden">';
+                        foreach($class['days'] as $day) {
+                            $output .= '<li>'.$day.'</li>';
+                        }
+                        $output .= '</ul>';
         }
 
         echo json_encode($output);
@@ -2066,8 +2102,8 @@ function get_clients_with_outstanding_payments($filter = null) {
 }
 
 
-add_action('wp_ajax_delete_item', 'delete_item'); // For logged-in users
-add_action('wp_ajax_nopriv_delete_item', 'delete_item'); // For non-logged-in users
+add_action('wp_ajax_delete_item', 'delete_item');
+add_action('wp_ajax_nopriv_delete_item', 'delete_item');
 
 function delete_item() {
     if ( $_POST['itemType'] == 'Order' ) {

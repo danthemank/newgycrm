@@ -70,8 +70,58 @@ function set_capabilities() { ?>
                     $('#gycrm_roles_capabilities').html(html)
                 }
             });
+
+            $.ajax({
+                url: <?php echo '"'.admin_url( 'admin-ajax.php' ).'"'; ?>,
+                data : {action: "get_staff_members", 
+                        role: currentRole,
+                },
+                success: function(response) {
+                    if (response) {
+                        response = JSON.parse(response)
+
+                        $('#gy_staff_members').html(response)
+                    }
+                }
+            })       
             
         });
+
+        $('#save_pin').on('click', function() {
+            $('#set_member_pin .notice-warning').hide()
+            $('#set_member_pin .notice-success').hide()
+            $(this).addClass('disabled')
+            $(this).attr('disabled', true)
+            
+            let pin = $('#gycrm_pin').val()
+            let staffId = $('#gy_staff_members').val()
+
+            if (pin.length == 4 && staffId !== '') {
+                $.ajax({
+                    url: <?php echo '"'.admin_url( 'admin-ajax.php' ).'"'; ?>,
+                    data : {action: "save_staff_member_pin", 
+                            staff_id: staffId,
+                            pin: pin,
+                    },
+                    success: function(response) {
+                        response = JSON.parse(response)
+                        if (response) {
+                            $('#set_member_pin .notice-success').show()
+                        } else {
+                            $('#set_member_pin .notice-warning').show()
+                        }
+
+                        $(this).removeClass('disabled')
+                        $(this).removeAttr('disabled')
+                    }
+                });
+            } else {
+                $('#set_member_pin .notice-warning').show()
+                $(this).removeClass('disabled')
+                $(this).removeAttr('disabled')
+            }
+
+        })
 
         $('body').on('change', '.gycrm-capability', function() {
             let isChecked = $(this).is(':checked')
@@ -109,7 +159,46 @@ function set_capabilities() { ?>
 
 add_action("wp_ajax_get_staff_capability", "get_staff_capability");
 add_action("wp_ajax_save_staff_capability", "save_staff_capability");
+add_action('wp_ajax_get_staff_members', 'get_staff_members');
+add_action('wp_ajax_save_staff_member_pin', 'save_staff_member_pin');
 
+function save_staff_member_pin() {
+    if (isset($_GET['staff_id']) && isset($_GET['pin'])) {
+        $staff_id = $_GET['staff_id'];
+        $pin = $_GET['pin'];
+
+        if (strlen($pin) == 4) {
+            $hash = password_hash($pin, PASSWORD_DEFAULT);
+            update_user_meta($staff_id, 'gy_login_pin', $hash);
+            echo json_encode(1);
+        } else {
+            echo json_encode(0);
+        }
+    }
+
+    die();
+}
+
+function gycrm_get_members($role) {
+    $managers = get_users( array(
+        'role' => $role
+        ));
+
+    $html = '';
+    foreach($managers as $member) {
+        $html .= '<option value="'.$member->ID.'">'.$member->user_login.'</option>';
+    }
+
+    return $html;
+}
+
+function get_staff_members() {
+    if (isset($_GET['role'])) {
+        echo json_encode(gycrm_get_members($_GET['role']));
+    }
+    
+    die();
+}
 
 function get_staff_capability() {
 

@@ -1,28 +1,45 @@
 jQuery(document).ready(function($){
-    $('#admin_filters #slot-filter-dropdown').on('change', function() {
-        let slot = $(this).val()
+    let programStatus = $('#program_status tbody tr')
+	$('#program_status #search_account').on('keyup', function() {
+
+		let search = $(this).val()
+		
+		$.each(programStatus, function() {
+
+			let rows = $(this).children()
+			rows = rows.text().toLowerCase()
+
+			if (rows.includes(search.toLowerCase()) && rows !== 'no items') {
+				$(this).removeClass('hidden');
+				$(this).addClass('row-show');
+			} else {
+				$(this).removeClass('row-show');
+				$(this).addClass('hidden');
+			}
+		})
+	})
+
+    $('#program_status #status_filter').on('change', function() {
+        let status = $(this).val()
+        let urlParams = new URLSearchParams(window.location.search);
+        let slot = urlParams.get('slot');
+        let meta = urlParams.get('meta');
         let programClass = $('#admin_filters #class-filter-dropdown').val()
-        let meta = $('#admin_filters #slot-filter-dropdown option[value="'+slot+'"]').data('meta')
 
         if (programClass !== '' && slot !== '' && meta !== '') {
-            window.location.href = '/wp-admin/admin.php?page=program-status&class='+programClass+'&slot='+slot+'&meta='+meta
+            window.location = '/wp-admin/admin.php?page=program-status&class='+programClass+'&slot='+slot+'&meta='+meta+'&status='+status
         }
+
     })
 
-    if ($('#admin_filters #slot-filter-dropdown').val() !== '') {
-        $('#admin_filters #slot-filter').show()
-    }
+    $('body').on('click', '#admin_filters #slot-filter-dropdown > li', function() {
+        let slot = $(this).data('slot')
+        let meta = $(this).data('meta')
+        let programClass = $('#admin_filters #class-filter-dropdown').val()
+        let status = $('#program_status #status_filter').val()
 
-
-    $('#program_status .search-submit').on('click', function(e) {
-        e.preventDefault();
-
-        let search = $('#program_status input[name="search"]').val();
-        let programClass = $('#program_status #is_class').data('class')
-
-        if (programClass) {
-            window.location.href = '/wp-admin/admin.php?page=program-status&class='+programClass+'&search='+search;
+        if (programClass !== '' && slot !== '' && meta !== '') {
+            window.location.href = '/wp-admin/admin.php?page=program-status&class='+programClass+'&slot='+slot+'&meta='+meta+'&status='+status
         }
-
-    });
+    })
 });

@@ -16,51 +16,48 @@ class ProgramStatus {
 
         global $wpdb;
 
-        if (!isset($_GET['class']) || $_GET['class'] == 'no') {
-
-            $sql = $this->query_builder(true);
-            
-            if (isset($_GET['search'])) {
-                $name = $_GET['search'];
-
-                $sql = $this->query_builder(true, true);
-
-                if (isset($_GET['orderby'])) {
-                    $sql = $this->query_builder(true, true, true);
-                }
-
-                $where = ["%$name%"];
-            } else {
-                if (isset($_GET['orderby'])) {
-                    $sql = $this->query_builder(true, false, true);
-                }
-            }
-            
-            
+        if (!isset($_GET['class']) && !isset($_GET['slot'])) {
+            $sql = 'SELECT ID, CONCAT(um3.meta_value, " ", um4.meta_value) name
+                FROM '.$wpdb->users.' u
+                LEFT JOIN wp_usermeta um3 ON (u.ID = um3.user_id AND um3.meta_key = "first_name")
+                LEFT JOIN wp_usermeta um4 ON (u.ID = um4.user_id AND um4.meta_key = "last_name")
+                WHERE ID NOT IN (
+                    SELECT user_id
+                    FROM '.$wpdb->usermeta.'
+                        WHERE meta_key = "classes"
+                ) AND ID IN (
+                    SELECT user_id
+                    FROM '.$wpdb->usermeta.'
+                        WHERE meta_key = "smuac_account_parent"
+                )';
         } else {
-            $class = $_GET['class'];
+            $sql = 'SELECT ID, CONCAT(um4.meta_value, " ", um5.meta_value) name, um1.meta_value AS status_program_participant
+                    FROM '.$wpdb->users.' u
+                    JOIN '.$wpdb->usermeta.' um1
+                        ON u.ID = um1.user_id
+                        AND um1.meta_key = "status_program_participant"';
 
-            $sql = $this->query_builder(false);
-            
-            $where = ["%$class%"];
+                    if (isset($_GET['status'])) {
+                        if ($_GET['status'] !== 'all') {
+                            $sql .= ' AND um1.meta_value = "'.$_GET['status'].'"';
+                        }
+                    } else {
+                        $sql .= ' AND um1.meta_value = "active"';
+                    }
 
-            if (isset($_GET['search'])) {
-                $name = $_GET['search'];
+                $sql .= ' JOIN '.$wpdb->usermeta.' um3
+                            ON u.ID = um3.user_id
+                    AND um3.meta_key = "slots"
+                    AND um3.meta_value LIKE "%'.$_GET['slot'].'%"
+                        LEFT JOIN wp_usermeta um4 ON (u.ID = um4.user_id AND um4.meta_key = "first_name")
+                        LEFT JOIN wp_usermeta um5 ON (u.ID = um5.user_id AND um5.meta_key = "last_name")';
+        }
 
-                $sql = $this->query_builder(false, true);
-
-                if (isset($_GET['orderby'])) {
-                    $sql = $this->query_builder(false, true, true);
-                }
-
-                $where = ["%$class%", "%$name%"];
-            } else {
-                if (isset($_GET['orderby'])) {
-                    $sql = $this->query_builder(false, false, true);
-                }
-            }
-            
-            
+        
+        if (isset($_GET['orderby'])) {
+            $sql .= ' ORDER BY name DESC';
+        } else {
+            $sql .= ' ORDER BY name ASC';
         }
 
         if (isset($_GET['orderby'])) {
@@ -71,12 +68,7 @@ class ProgramStatus {
             </style>';
         }
 
-        $data = isset($where) ?
-                $wpdb->get_results(
-                    $wpdb->prepare( $sql, $where)
-                ) : 
-                $wpdb->get_results($sql);
-
+        $data = $wpdb->get_results( $sql);
 
         echo '<div id="program_status">';
 
@@ -84,51 +76,6 @@ class ProgramStatus {
         require GY_CRM_PLUGIN_DIR . 'views/templates/admin/program_status/program_status_list.php';
 
         echo '</div>';
-    }
-
-    public function query_builder($unenrolled = false, $search = false, $orderby = false)
-    {
-
-        global $wpdb;
-
-        if ($unenrolled) {
-
-            $sql = 'SELECT ID, display_name
-            FROM '.$wpdb->users.'
-            WHERE ID NOT IN (
-                SELECT user_id
-                FROM '.$wpdb->usermeta.'
-                    WHERE meta_key = "classes"
-            ) AND ID IN (
-                SELECT user_id
-                FROM '.$wpdb->usermeta.'
-                    WHERE meta_key = "smuac_account_parent"
-            )';
-
-        } else {
-
-        $sql = 'SELECT ID, display_name, um1.meta_value AS status_program_participant
-            FROM '.$wpdb->users.' u
-            JOIN '.$wpdb->usermeta.' um1
-                ON u.ID = um1.user_id
-                AND um1.meta_key = "status_program_participant"
-            JOIN '.$wpdb->usermeta.' um2
-                ON um1.user_id = um2.user_id
-                AND um2.meta_key = "classes"
-                AND um2.meta_value LIKE %s';
-        }
-
-        if ($search) {
-            $sql .= ' AND display_name LIKE %s';
-        }
-        
-        if ($orderby) {
-            $sql .= ' ORDER BY display_name DESC';
-        } else {
-            $sql .= ' ORDER BY display_name ASC';
-        }
-
-        return $sql;
     }
 
     public function get_links()
@@ -198,18 +145,20 @@ class ProgramStatus {
         }
     }
 
-    public function get_class_slots($class_id, $slot_id) {
+    public function get_class_slots($class_id) {
         $output = '';
 
         $classes = get_slots_by_class($class_id);
 
         foreach($classes as $class) {
-            if ($class['slot'] == $slot_id) {
-                $output .= '<option class="class-option" value="'.$class['slot'].'" data-meta="'.$class['meta_id'].'" data-number="'. $class['slot_number'].'" selected>'. $class['slot_number'].' '.$class['days'].'</option>';
-            } else {
-                $output .= '<option class="class-option" value="'.$class['slot'].'" data-meta="'.$class['meta_id'].'" data-number="'. $class['slot_number'].'">'. $class['slot_number'].' '.$class['days'].'</option>';
-            }
+            $output .= '<li class="class-option" data-slot="'.$class['slot'].'" data-meta="'.$class['meta_id'].'" data-number="'. $class['slot_number'].'">'. $class['slot_number'].'</li>
+                        <ul class="hidden">';
+                        foreach($class['days'] as $day) {
+                            $output .= '<li>'.$day.'</li>';
+                        }
+                        $output .= '</ul>';
         }
+
         return $output;
 
     }

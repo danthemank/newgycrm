@@ -151,16 +151,27 @@
                         <input type="date" class="reg-input" value="<?= date('Y-m-d') ?>" name="start_date" id="start_date"/>
                         <div class="notice notice-warning is-dismissible hidden"><p>Please enter a date in the future.</p></div>
                     </div>
-                    
-                    <div class="form-row" id="card_placement">
 
+                    <div class="form-row coupon-row">
+                        <label for="free_class_coupon">Free Class Coupon Code</label>
+                        <div class="flex-container">
+                            <input type="text" class="reg-input" name="free_class_coupon" id="free_class_coupon"/>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <label>Due today: $<?= get_option('registration_fee') ?> Registration Fee *</label>
+                        <p class="disclaimer-sm">Credit Card transactions incur a 3.5% processing fee.</p>
+                        <div class="add_card">
+                        </div>
+                        <div style="margin-top: 1rem;" class="notice notice-warning is-dismissible hidden" id="card_errors"></div>
+                    </div>
+                
+                    <div class="form-row form-section submit-container">
+                        <input type="submit" class="btn submit-btn" value="Register & Enroll Athletes">
                     </div>
                 </div>
             </div>
-        </div>
-    
-        <div class="form-row form-section submit-container">
-            <input type="submit" class="btn submit-btn" value="Register & Enroll Athletes">
         </div>
 
         <div class="absolute hidden">

@@ -66,29 +66,37 @@
                     </select>
                 </td>
             </tr>
-            <tr class="form-field enrolled-classes">
+            <tr class="form-field enrolled-classes classes_slots">
                 <th scope="row">
                     <label for="program_multiselect">Programs</label>
                 </th>
                 <td>
                     <div>
-                        <ul id="enrolled_classes">
+                        <ul class="enrolled_classes">
                         </ul>
                     </div>
+                    
                     <div class="flex-container class-slot-filter">
                         <div class="flex-container class-choice">
                             <label for="class-filter-dropdown">Select Class:</label>
-                            <select id="class-filter-dropdown">
+                            <select id="class-filter-dropdown" data-id="classes_slots">
                                 <?= ProgramStatus::get_classes() ?>
                             </select>
                         </div>
-                        <div class="flex-container class-choice">
+                        <div class="flex-container class-choice slot-choice">
                             <label for="slot-filter-dropdown">Select Slot:</label>
-                            <select id="slot-filter-dropdown">
-                            </select>
+                            <div id="slot_options">
+                                <label for="slot_checked">Select Option</label>
+                                <input type="checkbox" id="slot_checked" style="display: none !important;">
+                                <ul id="slot-filter-dropdown" class="hidden" data-id="classes_slots">
+                                </ul>
+                            </div>
+                            <input type="hidden" id="slot_selected">
                         </div>
-                        <button type="button" class="submit_user_info" data-type="no-auto" id="submit_classes_slots">Add Class</button>
+                        <button type="button" class="submit_user_info submit_classes_slots" data-save="classes_slots" data-type="no-auto">Add Class</button>
                     </div>
+                    <input type="hidden" name="selected_programs" id="selected_programs" required>
+                    <input type="hidden" name="selected_slots" id="selected_slots" required>
                     <div class="global-success is-dismissible hidden">Success: Enrolled to class succesfully.</div>
                     <div class="global-error is-dismissible hidden"></div>
                 </td>
@@ -106,8 +114,7 @@
                 </td>
             </tr>
         </table>
-        <input type="hidden" name="selected_programs" id="selected_programs" required>
-        <input type="hidden" name="selected_slots" id="selected_slots" required>
+        
 
         <input type="submit" class="submit_user_info" name="save_child" id="save_child" value="Create Account">
     </form>

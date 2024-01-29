@@ -2,11 +2,11 @@
 const protocol = window.location.protocol;
 let stripe
 
-if (protocol == 'https:') {
-	stripe = Stripe('pk_live_51NDzTLGDW5CVzHx1YE4nGrDFoqHKCCAjIF4io37p7ExXVFcbxuaVRwi7RLQjU22y2N5hy1vSoLJ7i0YsWhAjjn9p007JNIX9rL');
-} else if (protocol == 'http:') {
+// if (protocol == 'https:') {
+// 	stripe = Stripe('pk_live_51NDzTLGDW5CVzHx1YE4nGrDFoqHKCCAjIF4io37p7ExXVFcbxuaVRwi7RLQjU22y2N5hy1vSoLJ7i0YsWhAjjn9p007JNIX9rL');
+// } else if (protocol == 'http:') {
 	stripe = Stripe('pk_test_51NDzTLGDW5CVzHx1w3A2N0TJEm5X3IFGEVJ2F7DaFBSUoe6oLKlTwS10EeF8f70rY3R3RuKT0GOeleGp73MBQCy500YFPD5dE2');
-}
+// }
 
 const elements = stripe.elements();
 const style = {
@@ -18,6 +18,44 @@ base: {
 const card = elements.create('card', {style});
 
 jQuery(document).ready(function($){
+
+	//************ */ ADD ORDER CATEGORY SEARCH
+	let addOrderCat = $('#order-items .pos-dd .dd-menu li:not(.dd-search)')
+	let addProductCat = $('#pos_add_product .pos-dd .dd-menu li:not(.dd-search)')
+
+	$('.pos-dd .dd-search input').on('keyup', function() {
+		let search = $(this).val()
+		let target = $(this).data('id')
+
+		if (target == 'order-items') {
+			searchCategories(search, addOrderCat)
+		} else {
+			searchCategories(search, addProductCat)
+		}
+		
+		
+	})
+
+	function searchCategories(search, target) {
+		$.each(target, function(i, el) {
+
+			let text = $(el).text().toLowerCase()
+
+			if (text.includes(search.toLowerCase())) {
+				$(el).removeClass('hidden');
+			} else {
+				$(el).addClass('hidden');
+			}
+		})
+	}
+
+
+	//************** */ DISABLE SEND EMAILS BUTTON
+
+	$('#gycrm_send_emails #gycrm_send_manual').on('submit', function() {
+		$('#gycrm_send_emails_btn').attr('disabled', true)
+		$('#gycrm_send_emails_btn').addClass('disabled')
+	})
 
 	//************* */ SAVE BILLING NOTE
 
@@ -180,7 +218,6 @@ jQuery(document).ready(function($){
 	});
 
 	$('.resend_invoice_item button').on('click', function() {
-		console.log('object');
 		const item = $(this).data('item')
 		const rowId = $(this).data('row');
 
@@ -236,7 +273,6 @@ jQuery(document).ready(function($){
 				$('tbody#the-list tr').each(function(i, el) {
 					let titleRow = $(el).find('.row-title')
 					let title = titleRow.text().replace(/— /g, '');
-					console.log(title);
 
 					if (response[title]) {
 						let count = $(el).find('.column-posts a')
@@ -245,8 +281,6 @@ jQuery(document).ready(function($){
 					}
 				})
 
-
-				console.log(response);
 			}
 		});
 	}
@@ -412,7 +446,6 @@ jQuery(document).ready(function($){
 				user: athleteId,
 			},
 			success: function(response) {
-				console.log(response);
 				response = JSON.parse(response)
 
 				if (response) {
@@ -697,21 +730,10 @@ jQuery(document).ready(function($){
 
 	//************ */ SETTINGS PAGE
 
-	let settingsPricing = $('.gycrm-admin-settings #settings_pricing')
-	let settingsTasks = $('.gycrm-admin-settings #settings_tasks')
-	let settingsRoles = $('.gycrm-admin-settings #settings_roles')
-	let settingsNotes = $('.gycrm-admin-settings #settings_notes')
-	
-	settingsTasks.detach()
-	settingsRoles.detach()
-	settingsNotes.detach()
-
-	let settingsSection = {'settingsPricing': settingsPricing, 'settingsTasks': settingsTasks, 'settingsRoles': settingsRoles, 'settingsNotes': settingsNotes}
-
 	$('.gycrm-admin-settings .tab').on('click', function() {
 		let id = $(this).data('id')
-		$('.gycrm-admin-settings .settings-section').detach()
-		$('.gycrm-admin-settings .main-section').append(settingsSection[id])
+		$('.gycrm-admin-settings .settings-section:not(.hidden)').addClass('hidden');
+		$(`.gycrm-admin-settings ${id}`).removeClass('hidden')
 	})
 
 	//************ */ CACHE LINK PROBLEM
@@ -1251,27 +1273,39 @@ jQuery(document).ready(function($){
 
 	//*************** */ CREATE CHILD PROGRAM MULTISELECT
 
-	$('body').on('click', '#enrolled_classes .delete-class-item-icon', function() {
-		console.log('object');
-		let classId = $(this).data('class')
-		let slotId = $(this).data('slot')
+	$('#save_complementary_left').on('click', function() {
+		let complementaryClassesLeft = $('#complementary_classes_number').val()
+		let athleteId = $('#athlete_enroll_id').val()
+		$('.complementary_classes_slots .global-success').addClass('hidden')
 
-		if ($(this).data('type') == 'no-auto') {
-			$('#enrolled_classes button[data-class="'+classId+'"][data-slot="'+slotId+'"]').parent().remove()
-		}
+		$.ajax({
+			url: obj.ajaxurl,
+			data: {
+				action: 'save_complementary_left',
+				athleteId: athleteId,
+				complementary_number: complementaryClassesLeft,
+			},
+			success: function(response) {
+				if (JSON.parse(response)) {
+					$('.complementary_classes_slots .global-success').removeClass('hidden')
+				}
+
+			}
+		});
 	})
 
-	$('.class-slot-filter #submit_classes_slots').on('click', function() {
+	$('.class-slot-filter .submit_classes_slots').on('click', function() {
 		
-		$('.enrolled-classes .global-error').addClass('hidden')
-		$('.enrolled-classes .global-success').addClass('hidden')
+		let containerId = $(this).data('save')
+		let classId = $('.'+containerId+' #class-filter-dropdown').val()
+		let slotId = $('.'+containerId+' #slot_selected').val()
 
-		let classId = $('#class-filter-dropdown').val()
-		let slotId = $('#slot-filter-dropdown').val()
+		$('.'+containerId+' .global-error').addClass('hidden')
+		$('.'+containerId+' .enroll-success').addClass('hidden')
 
 		if (classId !== '' && slotId !== '') {
-			let selectedPrograms = $('#selected_programs').val()
-			let selectedSlots = $('#selected_slots').val()
+			let selectedPrograms = $('.'+containerId+' #selected_programs').val()
+			let selectedSlots = $('.'+containerId+' #selected_slots').val()
 	
 			let uniquePrograms
 			let uniqueSlots
@@ -1289,13 +1323,13 @@ jQuery(document).ready(function($){
 				uniqueSlots = slotId
 			}
 	
-			$('#selected_programs').val(uniquePrograms)
-			$('#selected_slots').val(uniqueSlots)
+			$('.'+containerId+' #selected_programs').val(uniquePrograms)
+			$('.'+containerId+' #selected_slots').val(uniqueSlots)
 	
-			let athleteId = $('#athlete_enroll_id').val()
+			let athleteId = $('.'+containerId+' #athlete_enroll_id').val()
 
 			let isClass = false
-			$.each($('#enrolled_classes button'), function(i, el) {
+			$.each($('.'+containerId+' .enrolled_classes button'), function(i, el) {
 				if ($(el).data('class') == classId && $(el).data('slot') == slotId) {
 					isClass = true
 				}
@@ -1303,28 +1337,39 @@ jQuery(document).ready(function($){
 
 			if (!isClass) {
 				if ($(this).data('type') !== 'no-auto') {
-					enrollAthlete(uniquePrograms, uniqueSlots, athleteId, classId, slotId, 'enroll')
+					enrollAthlete(uniquePrograms, uniqueSlots, athleteId, classId, slotId, 'enroll', containerId)
 				} else {
-					let title = $('#class-filter-dropdown option[value="'+classId+'"]').first().text()
-					let slot = $('#slot-filter-dropdown option[value="'+slotId+'"]').first().data('number')
-					let html = `<li>${title} ${slot} <button type="button" data-class="${classId}" data-slot="${slotId}" data-type="no-auto" class="delete-class-item-icon"></button></li>`
-					$('#enrolled_classes').append(html)
+					let title = $('.'+containerId+' #class-filter-dropdown option[value="'+classId+'"]').first().text()
+					let slot = $('.'+containerId+' #slot_selected').data('number')
+					let html = `<li>${title} ${slot} <button type="button" data-class="${classId}" data-id="${containerId}"  data-slot="${slotId}" data-type="no-auto" class="delete-class-item-icon"></button></li>`
+					$('.'+containerId+' .enrolled_classes').append(html)
 				}
 			}
 	
 		} else {
-			$('.enrolled-classes .global-error').text('Error: Please select a class and a slot.')
-			$('.enrolled-classes .global-error').removeClass('hidden')
+			$('.'+containerId+' .global-error').text('Error: Please select a class and a slot.')
+			$('.'+containerId+' .global-error').removeClass('hidden')
 		}
 
 	})
 
-	function unenrollAthlete(classId, slotId) {
-		if (classId !== '' && slotId !== '') {
-			let selectedPrograms = $('#selected_programs').val().split(',')
-			let selectedSlots = $('#selected_slots').val().split(',')
 
-			if ($('#enrolled_classes button[data-class="'+classId+'"]').length == 1) {
+	$('body').on('click', '.enrolled_classes .delete-class-item-icon', function() {
+		let containerId = $(this).data('id')
+		let classId = $(this).data('class')
+		let slotId = $(this).data('slot')
+
+		if ($(this).data('type') == 'no-auto' && containerId == 'classes_slots') {
+			$('.'+containerId+' .enrolled_classes button[data-class="'+classId+'"][data-slot="'+slotId+'"]').parent().remove()
+		}
+	})
+
+	function unenrollAthlete(classId, slotId, containerId) {
+		if (classId !== '' && slotId !== '') {
+			let selectedPrograms = $('.'+containerId+' #selected_programs').val().split(',')
+			let selectedSlots = $('.'+containerId+' #selected_slots').val().split(',')
+
+			if ($('.'+containerId+' .enrolled_classes button[data-class="'+classId+'"]').length == 1) {
 				selectedPrograms = $.grep(selectedPrograms, function(value) {
 					return value != classId;
 				}).join(',');
@@ -1336,24 +1381,31 @@ jQuery(document).ready(function($){
 				return value != slotId;
 			}).join(',');
 	
-			$('#selected_programs').val(selectedPrograms)
-			$('#selected_slots').val(selectedSlots)
+			$('.'+containerId+' #selected_programs').val(selectedPrograms)
+			$('.'+containerId+' #selected_slots').val(selectedSlots)
 	
-			let athleteId = $('#athlete_enroll_id').val()
-			enrollAthlete(selectedPrograms, selectedSlots, athleteId, classId, slotId, 'unenroll')
+			let athleteId = $('.'+containerId+' #athlete_enroll_id').val()
+
+			if ($(this).data('type') !== 'no-auto') {
+				enrollAthlete(selectedPrograms, selectedSlots, athleteId, classId, slotId, 'unenroll', containerId)
+			} else {
+				$('.'+containerId+' .enrolled_classes button[data-class="'+classId+'"][data-slot="'+slotId+'"]').parent().remove()
+			}
 		}
 	}
 
 	$('#confirm_delete_class #confirm_delete_class_btn').on('click', function() {
+		let containerId = $('#confirm_delete_class #container_id').val()
 		let classId = $('#confirm_delete_class #delete_class_id').val()
 		let slotId = $('#confirm_delete_class #delete_slot_id').val()
 		$('#confirm_delete_class').hide()
         $('body').css('overflow', 'auto')
+        $('.jquery-modal.blocker.current').remove()
 
-		unenrollAthlete(classId, slotId)
+		unenrollAthlete(classId, slotId, containerId)
 	})
 
-	function enrollAthlete(uniquePrograms, uniqueSlots, athleteId, classId, slotId, type) {
+	function enrollAthlete(uniquePrograms, uniqueSlots, athleteId, classId, slotId, type, meta) {
 		$.ajax({
 			url: obj.ajaxurl,
 			data: {
@@ -1361,28 +1413,29 @@ jQuery(document).ready(function($){
 				athleteId: athleteId,
 				programs: uniquePrograms,
 				slots: uniqueSlots,
+				meta: meta,
 			},
 			success: function(response) {
 				response = JSON.parse(response)
 
 				if (type == 'enroll') {
 					if (response) {
-						let title = $('#class-filter-dropdown option[value="'+classId+'"]').first().text()
-						let slot = $('#slot-filter-dropdown option[value="'+slotId+'"]').first().data('number')
-						let html = `<li>${title} ${slot} <button type="button" data-class="${classId}" data-slot="${slotId}" data-modal="#confirm_delete_class" class="edit-btn delete-class-item-icon"></button></li>`
-						$('#enrolled_classes').append(html)
-						$('.enrolled-classes .global-success').text('Enrolled to class successfully.')
-						$('.enrolled-classes .global-success').removeClass('hidden')
+						let title = $('.'+meta+' #class-filter-dropdown option[value="'+classId+'"]').first().text()
+						let slot = $('.'+meta+' #slot_selected').data('number')
+						let html = `<li>${title} ${slot} <button type="button" data-class="${classId}" data-id="${meta}" data-slot="${slotId}" data-modal="#confirm_delete_class" class="edit-btn delete-class-item-icon"></button></li>`
+						$('.'+meta+' .enrolled_classes').append(html)
+						$('.'+meta+' .enroll-success').text('Enrolled to class successfully.')
+						$('.'+meta+' .enroll-success').removeClass('hidden')
 					}
 				} else {
-					$('#enrolled_classes button[data-class="'+classId+'"][data-slot="'+slotId+'"]').parent().remove()
-					$('.enrolled-classes .global-success').text('Unenrolled from class successfully.')
-					$('.enrolled-classes .global-success').removeClass('hidden')
+					$('.'+meta+' .enrolled_classes button[data-class="'+classId+'"][data-slot="'+slotId+'"]').parent().remove()
+					$('.'+meta+' .enroll-success').text('Unenrolled from class successfully.')
+					$('.'+meta+' .enroll-success').removeClass('hidden')
 				}
 			}, 
 			error: function(error) {
-				$('.enrolled-classes .global-error').text('Unknown Error: Please try again later.')
-				$('.enrolled-classes .global-error').removeClass('hidden')
+				$('.'+meta+' .global-error').text('Unknown Error: Please try again later.')
+				$('.'+meta+' .global-error').removeClass('hidden')
 			}
 		});
 	}
@@ -1671,22 +1724,14 @@ jQuery(document).ready(function($){
 
 	// Add new parent modal
 	jQuery(document).ready(function($) {
-		$('#add-parent-open-modal').on('click', function() {
-			$('#add-parent-modal').fadeIn();
-		});
-	
-		$('#add-parent-close-modal').on('click', function() {
-			$('#add-parent-modal').fadeOut();
-		});
-	
 		$('#save-user-button').on('click', function() {
 		
-			var firstName = $('#first_name').val();
-			var lastName = $('#last_name').val();
+			var firstName = $('#add_first_name').val();
+			var lastName = $('#add_last_name').val();
 			var email = $('#email').val();
 			var userName = $('#username').val();
 			var password = $('#password').val();
-			// Realizar una solicitud AJAX para crear un nuevo usuario
+			
 			$.ajax({
 				type: 'POST',
 				url: obj.ajaxurl,
@@ -1898,10 +1943,10 @@ jQuery(document).ready(function($){
 
 		form.forEach(el => {
 			el.addEventListener('submit', async (event) => {
+				event.preventDefault();
 				let cardExists = document.querySelector('#card_exists').checked
 				let customerPm = document.querySelector('#add-pm-form')
 				let paymentMethod = document.querySelector('#payment_method').value
-				let achExists = document.querySelector('#ach_exists').checked
 				let btn = document.querySelector('.easy-pos #submit_payment')
 				let loader = document.querySelector('.easy-pos .absolute')
 
@@ -1910,7 +1955,6 @@ jQuery(document).ready(function($){
 				}
 
 				if (!cardExists && paymentMethod == 'card') {
-					event.preventDefault();
 					
 					const {token, error} = await stripe.createToken(card);
 					
@@ -1920,17 +1964,18 @@ jQuery(document).ready(function($){
 						errorElement.textContent = error.message;
 						loader.classList.add('hidden');
 					} else {
-						let targ = event.target.id
+						// let targ = event.target.id
 						loader.classList.remove('hidden');
 						loader.style.display = 'block';
-						stripeTokenHandler(token, targ);
+						createGyPayment(token)
+						// stripeTokenHandler(token, targ);
 					}
 				} else {
 					btn.setAttribute('disabled', true);
 					btn.classList.add('disabled');
 					loader.classList.remove('hidden');
 					loader.style.display = 'block';
-					el.submit()
+					createGyPayment()
 				}
 				
 			});
@@ -2029,7 +2074,7 @@ jQuery(document).ready(function($){
 								setupPm.value = setupIntent.payment_method.id
 
 								if (el) {
-									el.submit();
+									el.submit()
 								} else {
 									btn.removeAttribute('disabled')
 									btn.classList.remove('disabled')
@@ -2062,21 +2107,223 @@ jQuery(document).ready(function($){
 				}
 			}
 		}
-
-
-		const stripeTokenHandler = (token, targ) => {
-			const form = document.getElementById(targ);
-			const hiddenInput = document.createElement('input');
-			hiddenInput.setAttribute('type', 'hidden');
-			hiddenInput.setAttribute('name', 'stripeToken');
-			hiddenInput.setAttribute('value', token.id);
-			form.appendChild(hiddenInput);
-			form.submit();
-
+		
+		const createGyPayment = (token = null) => {
+			let success = document.querySelector('.easy-pos .global-success')
+			let warning = document.querySelector('.easy-pos .global-error')
 			let btn =  document.querySelector('.easy-pos #submit_payment')
-			btn.setAttribute('disabled', true);
-			btn.classList.add('disabled');
+			let loader = document.querySelector('.easy-pos .absolute')
+
+			let requiredFields = ['customer', 'amount', 'cash_receipt', 'check_number', 'is_discount', 'is_fee']
+			let invalid = []
+
+			document.querySelectorAll('.notice-warning').forEach(function(el) {
+				el.classList.add('hidden')
+			})
+			success.classList.add('hidden')
 			
+			const percentageValues = {};
+			const percentages = document.querySelectorAll('input[name^="percentage["]');
+			Array.from(percentages).forEach(input => {
+				const key = input.name.slice(11, -1);
+				percentageValues[key] = input.value;
+			});
+
+			let fields = {
+				'pos_nonce': document.querySelector('.easy-pos #pos_nonce') ? document.querySelector('.easy-pos #pos_nonce').value : null,
+				'stripeToken': token ? token.id : null,
+				'customer': document.querySelector('.easy-pos #customer') ? document.querySelector('.easy-pos #customer').value : null,
+				'order': document.querySelector('.easy-pos #order') ? document.querySelector('.easy-pos #order').value : null,
+				'payment_method': document.querySelector('.easy-pos #payment_method') ? document.querySelector('.easy-pos #payment_method').value : null,
+				'is_discount': document.querySelector('.easy-pos #is_discount:checked') ? document.querySelector('.easy-pos #is_discount').value : null,
+				'is_fee': document.querySelector('.easy-pos #is_fee:checked') ? document.querySelector('.easy-pos #is_fee').value : null,
+				'card_exists': document.querySelector('.easy-pos [name="card_exists"]:checked') ? document.querySelector('.easy-pos [name="card_exists"]:checked').value : null,
+				'card_id': document.querySelector('.easy-pos #card_id') ? document.querySelector('.easy-pos #card_id').value : null,
+				'setup_id': document.querySelector('.easy-pos #setup_id') ? document.querySelector('.easy-pos #setup_id').value : null,
+				'setup_pm': document.querySelector('.easy-pos #setup_pm') ? document.querySelector('.easy-pos #setup_pm').value : null,
+				'ach_exists': document.querySelector('.easy-pos [name="ach_exists"]:checked') ? document.querySelector('.easy-pos [name="ach_exists"]:checked').value : null,
+				'ach_id': document.querySelector('.easy-pos #ach_id') ? document.querySelector('.easy-pos #ach_id').value : null,
+				'check_number': document.querySelector('.easy-pos #check_number') ? document.querySelector('.easy-pos #check_number').value : null,
+				'cash_receipt': document.querySelector('.easy-pos #cash_receipt') ? document.querySelector('.easy-pos #cash_receipt').value : null,
+				'staff_note': document.querySelector('.easy-pos #staff_note') ? document.querySelector('.easy-pos #staff_note').value : null,
+				'email_template': document.querySelector('.easy-pos #email_template') ? document.querySelector('.easy-pos #email_template').value : null,
+				'email_subject': document.querySelector('.easy-pos #email_subject') ? document.querySelector('.easy-pos #email_subject').value : null,
+				'merge_tags': document.querySelector('.easy-pos #merge_tags') ? document.querySelector('.easy-pos #merge_tags').value : null,
+				'amount': document.querySelector('.easy-pos #amount') ? document.querySelector('.easy-pos #amount').value : null,
+				'email_content': tinyMCE.get('email_content') ? tinyMCE.get('email_content').getContent() : (document.querySelector('.easy-pos #email_content') ? document.querySelector('.easy-pos #amount').value : null),
+				'percentage': percentageValues,
+			}
+
+			if (!fields.customer || fields.customer == 'no_account') {
+				invalid.push('customer')
+			}
+			if (!fields.amount || fields.amount <= 0) {
+				invalid.push('amount')
+			}
+			if (fields.payment_method == 'check' && fields.check_number == '') {
+				invalid.push('check_number')
+			}
+			if (fields.payment_method == 'cash' && fields.cash_receipt == '') {
+				invalid.push('cash_receipt')
+			}
+			if (fields.is_discount && (fields.percentage['discount'] <= 0 || !fields.percentage['discount'])) {
+				invalid.push('is_discount')
+			}
+			if (fields.is_fee && (fields.percentage['fee'] <= 0 || !fields.percentage['fee'])) {
+				invalid.push('is_fee')
+			}
+
+			if (!invalid.length) {
+				let customerId = fields.customer
+				fields = JSON.stringify(fields)
+				const xhr = new XMLHttpRequest();
+				xhr.open('GET', "/wp-admin/admin-ajax.php?action=gy_create_payment&fields="+fields, true);
+				xhr.send();
+				xhr.onload = function() {
+					resetForm(btn, loader)
+					if (xhr.status === 200) {
+						let response = JSON.parse(xhr.responseText)
+
+						let posAmount = document.querySelector('.easy-pos #amount')
+						let myAccountAmount = document.querySelector('.easy-pos #my_account_amount')
+						let isFee = document.querySelector('.easy-pos #is_fee')
+						let isDiscount = document.querySelector('.easy-pos #is_discount')
+
+						posAmount.value = ''
+						if (myAccountAmount) {
+							myAccountAmount.textContent = ''
+						}
+
+						if (response.required) {
+							checkRequiredFields(response.required, requiredFields)
+						}
+
+						if (response.is_invalid) {
+							warning.textContent = response.is_invalid
+							warning.classList.remove('hidden')
+							warning.scrollIntoView({ behavior: 'smooth' });
+						} 
+						
+						if (response.success) {
+
+							success.classList.remove('hidden')
+							success.scrollIntoView({ behavior: 'smooth' });
+
+							let balanceTable = document.querySelector('#balance_table');
+
+							if (balanceTable) {
+								balanceTable.innerHTML = ''
+							}
+
+							document.querySelector('#setup_id').value = ''
+							document.querySelector('#setup_pm').value = ''
+							if (document.querySelector('#email_content')) {
+								document.querySelector('#email_content').value = ''
+							}
+							if (tinyMCE.get('email_content')) {
+								tinyMCE.get('email_content').setContent('')
+							}
+							if (document.querySelector('#email_subject')) {
+								document.querySelector('#email_subject').value = ''
+							}
+
+							xhr.open('GET', "/wp-admin/admin-ajax.php?action=get_amount&customer_id="+customerId+"&order_id= ", true);
+							xhr.send();
+							xhr.onload = function() {
+								if (xhr.status === 200) {
+									let response = JSON.parse(xhr.responseText)
+									let amount = response.amount 
+
+									posAmount.value = amount
+									if (myAccountAmount) {
+										myAccountAmount.textContent = amount
+									}
+
+									if (isFee && isDiscount && feeSection && discountSection && !myAccountAmount) {
+										isFee.checked = false
+										isDiscount.checked = false
+									}
+									
+									if (balanceTable) {
+										balanceTable.innerHTML = response.table
+									} 
+
+									const balanceTableRows = document.querySelectorAll('#balance_table tbody tr.original-row');
+									balanceTableRows.forEach((row, index) => {
+										const creditCell = row.querySelector(`#credit${index}`);
+										const debitCell = row.querySelector(`#debit${index}`);
+
+										const creditValue = creditCell.textContent.trim();
+										const debitValue = debitCell.textContent.trim();
+
+										if (creditValue !== '$0.00') {
+											row.classList.add('highlight-row-credit');
+										}
+
+										if (debitValue !== '$0.00') {
+											row.classList.add('highlight-row-debit');
+										}
+									});
+
+									const discountPercentageInput = document.getElementById('discount_percentage');
+									const discountPercentage = discountPercentageInput.value;
+
+									if (discountPercentage !== '') {
+										const discountGiven = amount * (discountPercentage / 100);
+										document.getElementById('discount_given').value = discountGiven.toFixed(2);
+									}
+
+									const feePercentageInput = document.querySelector('.easy-pos .fee_percentage');
+									const feePercentage = feePercentageInput.value;
+
+									if (feePercentage !== '') {
+										const feeGiven = amount * parseFloat(feePercentage) / 100;
+										document.getElementById('fee_given').value = feeGiven;
+
+										const amountFee = parseFloat(amount) + parseFloat(feeGiven);
+										document.getElementById('amount_fee').value = amountFee.toFixed(2);
+									}
+
+									const amountToBring = amount / (1 + discountPercentage);
+									document.getElementById('amount_current').value = amountToBring.toFixed(2);
+								}
+							}
+						}
+					} else {
+						warning.classList.remove('hidden')
+						warning.textContent = 'Unknown Error. Please try again later.'
+						warning.scrollIntoView({ behavior: 'smooth' });
+					}
+				}
+			} else {
+				resetForm(btn, loader)
+				checkRequiredFields(invalid, requiredFields, btn, loader)
+			}
+			
+		}
+
+		let resetForm = (btn, loader) => {
+			btn.removeAttribute('disabled');
+			btn.classList.remove('disabled');
+			loader.classList.add('hidden')
+			loader.style.display = 'none'
+		}
+
+		let checkRequiredFields = (fields, requiredFields) => {
+			requiredFields.forEach(el => {
+				if (fields.includes(el)) {
+					let element = document.querySelector('.easy-pos #error_'+el+' + .notice-warning')
+					if (element) {
+						element.classList.remove('hidden')
+					}
+				}
+			})
+			
+			const warnings = document.querySelectorAll('.notice-warning').filter(warning => {
+				return !warning.classList.contains('hidden');
+			})[0];
+
+			warnings.scrollIntoView({ behavior: 'smooth' });
 		}
 	});
 
